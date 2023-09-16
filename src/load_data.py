@@ -1,10 +1,10 @@
-import json
 import networkx as nx
 import numpy as np
 import pandas as pd
 from pathlib import Path
 
 FLOAT = np.float32
+
 
 def read_metadata_networks_tntp(filename: Path) -> dict:
     with open(filename, "r") as file:
@@ -17,12 +17,13 @@ def read_metadata_networks_tntp(filename: Path) -> dict:
 def read_graph_transport_networks_tntp(filename: Path) -> tuple[nx.DiGraph, dict]:
     # Made on the basis of
     # https://github.com/bstabler/TransportationNetworks/blob/master/_scripts/parsing%20networks%20in%20Python.ipynb
-    
+
+    """If centroids are separated from regular nodes, the ordering of nodes is (sources, through_nodes, targets)"""
+
     metadata = read_metadata_networks_tntp(filename)
 
     net = pd.read_csv(filename, skiprows=8, sep='\t')
     net.columns = [col.strip().lower() for col in net.columns]
-    net = net.loc[:, ["init_node", "term_node", "capacity", "free_flow_time"]]
     net.loc[:, ["init_node", "term_node"]] -= 1
 
     graph = nx.DiGraph()
@@ -37,8 +38,10 @@ def read_graph_transport_networks_tntp(filename: Path) -> tuple[nx.DiGraph, dict
         graph.add_edge(
             source,
             dest,
-            cost=FLOAT(row[1].free_flow_time),
-            bandwidth=FLOAT(row[1].capacity)
+            free_flow_times=FLOAT(row[1].free_flow_time),
+            capacities=FLOAT(row[1].capacity),
+            rho=FLOAT(row[1].b),
+            mu=1 / FLOAT(row[1].power),
         )
     
     return graph, metadata
@@ -47,6 +50,8 @@ def read_graph_transport_networks_tntp(filename: Path) -> tuple[nx.DiGraph, dict
 def read_traffic_mat_transport_networks_tntp(filename: Path, metadata: dict) -> np.ndarray:
     # Made on the basis of
     # https://github.com/bstabler/TransportationNetworks/blob/master/_scripts/parsing%20networks%20in%20Python.ipynb
+
+
     with open(filename, "r") as file:
         blocks = file.read().split("Origin")[1:]
     matrix = {}
@@ -65,7 +70,7 @@ def read_traffic_mat_transport_networks_tntp(filename: Path, metadata: dict) -> 
     zone_demands = np.zeros((zones, zones))
     for i in range(zones):
         for j in range(zones):
-            zone_demands[i, j] = matrix.get(i + 1, {}).get(j + 1,0)
+            zone_demands[i, j] = matrix.get(i + 1, {}).get(j + 1, 0)
 
     num_nodes = metadata["nodes"]
     num_nodes += (0 if metadata["can_pass_through_zones"] else metadata["zones"])
@@ -85,11 +90,10 @@ def update_node_coordinates(node_coords: dict, metadata: dict):
 
 
 def read_node_coordinates_transport_networks_tntp(filename: Path, metadata: dict) -> dict:
-    with open(filename, "r") as file:
-        try:
-            data = pd.read_csv(filename, delim_whitespace=True, header=0, names=["node", "x", "y", "semicolon"])
-        except pd.errors.ParserError:
-            data = pd.read_csv(filename, delim_whitespace=True, header=0, names=["node", "x", "y"])
+    try:
+        data = pd.read_csv(filename, delim_whitespace=True, header=0, names=["node", "x", "y", "semicolon"])
+    except pd.errors.ParserError:
+        data = pd.read_csv(filename, delim_whitespace=True, header=0, names=["node", "x", "y"])
     data = data.loc[:, ["x", "y"]]
 
     node_coords = {}
@@ -98,4 +102,3 @@ def read_node_coordinates_transport_networks_tntp(filename: Path, metadata: dict
 
     update_node_coordinates(node_coords, metadata)
     return node_coords
-

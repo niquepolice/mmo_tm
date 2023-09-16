@@ -25,5 +25,3 @@ def flows_on_shortest_nx(graph: nx.Graph, traffic_mat: np.ndarray, costs: np.nda
                 flows_subgd_ije[i, j, edge_to_ind[edge]] += traffic_mat[i, j]
 
     return flows_subgd_ije
-
-
