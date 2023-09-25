@@ -12,6 +12,7 @@ def frank_wolfe(
         max_time: float = 0,  # max execution time in seconds, 0 for no limit
         stop_by_crit: bool = True,
 ) -> tuple:
+    """One iteration == 1 shortest paths call"""
 
     optimal = False
 
@@ -53,6 +54,7 @@ def ustm(
     eps_abs: float,
     eps_cons_abs: float = np.inf,
     max_iter: int = 10000,
+    max_sp_calls: int = 10000,  # max shortest paths calls, dont count the first (preprocessing) call
     max_time: float = 0,  # max execution time in seconds, 0 for no limit
     stop_by_crit: bool = True,
 ) -> tuple:
@@ -137,6 +139,9 @@ def ustm(
     
         if stop_by_crit and dgap_log[-1] <= eps_abs and cons_log[-1] <= eps_cons_abs:
             optimal = True
+            break
+
+        if len(dgap_log) > max_sp_calls:
             break
 
     return t, flows_averaged_e, dgap_log, cons_log, A_log, optimal

@@ -5,14 +5,16 @@ from graph_tool.topology import shortest_distance
 import numba
 from numba.core import types
 
+from src.commons import Correspondences
+
 
 @numba.njit
-def sum_flows_from_tree(source: int, targets: np.ndarray, pred_map_arr: np.ndarray, traffic_mat: np.ndarray,
+def sum_flows_from_tree(source: int, targets: np.ndarray, pred_map_arr: np.ndarray, traffic_mat_row: np.ndarray,
                         edge_to_ind: numba.typed.Dict) -> np.ndarray:
     num_edges = len(edge_to_ind)
     flows_e = np.zeros(num_edges)
-    for v in targets:
-        corr = traffic_mat[source, v]
+    for j, v in enumerate(targets):  # j = index of target in traffic_mat
+        corr = traffic_mat_row[j]
         while v != source:
             v_pred = pred_map_arr[v]
             flows_e[edge_to_ind[(v_pred, v)]] += corr
@@ -20,14 +22,12 @@ def sum_flows_from_tree(source: int, targets: np.ndarray, pred_map_arr: np.ndarr
     return flows_e
 
 
-def flows_on_shortest_gt(graph: gt.Graph, traffic_mat: np.ndarray, weights: gt.EdgePropertyMap) -> np.ndarray:
+def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.EdgePropertyMap) -> np.ndarray:
     """Returns flows on edges for each ij-pair
     (obtained from flows on shortest paths w.r.t costs induced by dual_costs)"""
     num_nodes, num_edges = graph.num_vertices(), graph.num_edges()
 
-    # TODO: calculate once and save?
-    sources = np.where(traffic_mat.sum(axis=1))[0]
-    targets = np.where(traffic_mat.sum(axis=0))[0]
+    traffic_mat, sources, targets = corrs.traffic_mat, corrs.sources, corrs.targets
 
     edges_arr = graph.get_edges()
     edge_to_ind = numba.typed.Dict.empty(key_type=types.UniTuple(types.int64, 2), value_type=numba.core.types.int64)
@@ -35,13 +35,14 @@ def flows_on_shortest_gt(graph: gt.Graph, traffic_mat: np.ndarray, weights: gt.E
         edge_to_ind[tuple(edge)] = i
 
     flows_on_shortest_e = np.zeros(num_edges)
-    for source in sources:
+
+    for i, source in enumerate(sources):  # i = index of source in traffic_mat
         _, pred_map = shortest_distance(graph, source=source, target=targets, weights=weights, pred_map=True)
         flows_on_shortest_e += sum_flows_from_tree(
             source=source,
             targets=targets,
             pred_map_arr=np.array(pred_map.a),
-            traffic_mat=traffic_mat,
+            traffic_mat_row=traffic_mat[i],
             edge_to_ind=edge_to_ind,
         )
 

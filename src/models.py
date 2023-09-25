@@ -1,6 +1,8 @@
 import networkx as nx
 import numpy as np
 from abc import ABC, abstractmethod
+
+from src.commons import Correspondences
 from src.cvxpy_solvers import solve_min_cost_concurrent_flow
 from src.newton import newton
 
@@ -8,10 +10,10 @@ from src.shortest_paths_gt import flows_on_shortest_gt, get_graphtool_graph, get
 
 
 class TrafficModel(ABC):
-    def __init__(self, nx_graph: nx.DiGraph, traffic_mat: np.ndarray):
+    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences):
         self.nx_graph = nx_graph
         self.graph = get_graphtool_graph(nx_graph)
-        self.traffic_mat = traffic_mat
+        self.correspondences = correspondences
 
     def flows_on_shortest(self, times_e: np.ndarray) -> np.ndarray:
         """Get edge flows distribution for given edge costs"""
@@ -21,7 +23,7 @@ class TrafficModel(ABC):
 
         self.graph.ep.times.a = times_e
 
-        return flows_on_shortest_gt(self.graph, self.traffic_mat, self.graph.ep.times)
+        return flows_on_shortest_gt(self.graph, self.correspondences, self.graph.ep.times)
 
     def capacity_violation(self, flows_e: np.ndarray) -> float:
         """Could be ignored for Backmann model"""
@@ -41,6 +43,11 @@ class TrafficModel(ABC):
 
     @abstractmethod
     def dual_composite_prox(self, times_e: np.ndarray, stepsize: float) -> np.ndarray:
+        ...
+
+    # TODO ??
+    # @abstractmethod
+    # def log(self, history) -> np.ndarray:
         ...
 
     @abstractmethod
@@ -102,7 +109,8 @@ class BeckmannModel(TrafficModel):
 
     def solve_cvxpy(self, **solver_kwargs):
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
-        flows_ie, costs, potentials, nonneg_duals = solve_beckmann(self.nx_graph, self.traffic_mat, **solver_kwargs)
+        flows_ie, costs, potentials, nonneg_duals = solve_beckmann(self.nx_graph, self.correspondences.traffic_mat,
+                                                                   **solver_kwargs)
         return flows_ie, costs, potentials, nonneg_duals 
 
 
@@ -127,6 +135,9 @@ class SDModel(TrafficModel):
 
     def solve_cvxpy(self, **solver_kwargs):
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
-        flows_ie, costs, potentials, nonneg_duals = solve_min_cost_concurrent_flow(self.nx_graph, self.traffic_mat, **solver_kwargs)
+
+        flows_ie, costs, potentials, nonneg_duals = solve_min_cost_concurrent_flow(self.nx_graph,
+                                                                                   self.correspondences.node_traffic_mat,
+                                                                                   **solver_kwargs)
         return flows_ie.sum(axis=0), self.graph.ep.free_flow_times.a + costs, potentials, nonneg_duals
 

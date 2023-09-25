@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+from src.commons import Correspondences
+
 FLOAT = np.float32
 
 
@@ -31,13 +33,13 @@ def read_graph_transport_networks_tntp(filename: Path) -> tuple[nx.DiGraph, dict
         range(metadata["nodes"] + (0 if metadata["can_pass_through_zones"] else metadata["zones"])))
 
     for row in net.iterrows():
-        source = row[1].init_node
-        dest = row[1].term_node
-        if not metadata["can_pass_through_zones"] and dest < metadata["zones"]:
-            dest += metadata["nodes"]
+        init_node = row[1].init_node
+        term_node = row[1].term_node
+        if not metadata["can_pass_through_zones"] and term_node < metadata["zones"]:
+            term_node += metadata["nodes"]
         graph.add_edge(
-            source,
-            dest,
+            init_node,
+            term_node,
             free_flow_times=FLOAT(row[1].free_flow_time),
             capacities=FLOAT(row[1].capacity),
             rho=FLOAT(row[1].b),
@@ -47,10 +49,9 @@ def read_graph_transport_networks_tntp(filename: Path) -> tuple[nx.DiGraph, dict
     return graph, metadata
 
 
-def read_traffic_mat_transport_networks_tntp(filename: Path, metadata: dict) -> np.ndarray:
+def read_traffic_mat_transport_networks_tntp(filename: Path, metadata: dict) -> Correspondences:
     # Made on the basis of
     # https://github.com/bstabler/TransportationNetworks/blob/master/_scripts/parsing%20networks%20in%20Python.ipynb
-
 
     with open(filename, "r") as file:
         blocks = file.read().split("Origin")[1:]
@@ -67,20 +68,25 @@ def read_traffic_mat_transport_networks_tntp(filename: Path, metadata: dict) -> 
             matrix[orig][int(dest)] = FLOAT(demand)
 
     zones = metadata["zones"]
-    zone_demands = np.zeros((zones, zones))
+    traffic_mat = np.zeros((zones, zones))
     for i in range(zones):
         for j in range(zones):
-            zone_demands[i, j] = matrix.get(i + 1, {}).get(j + 1, 0)
+            traffic_mat[i, j] = matrix.get(i + 1, {}).get(j + 1, 0)
 
     num_nodes = metadata["nodes"]
-    num_nodes += (0 if metadata["can_pass_through_zones"] else metadata["zones"])
-    traffic_mat = np.zeros((num_nodes, num_nodes), dtype=FLOAT)
-    if metadata["can_pass_through_zones"]:
-        traffic_mat[:zones, :zones] = zone_demands
-    else:
-        traffic_mat[:zones, -zones:] = zone_demands
 
-    return traffic_mat
+    sources = np.arange(zones)
+    print(f'{metadata["can_pass_through_zones"]=}')
+    targets = sources if metadata["can_pass_through_zones"] else num_nodes + sources
+
+    num_nodes += (0 if metadata["can_pass_through_zones"] else metadata["zones"])
+    node_traffic_mat = np.zeros((num_nodes, num_nodes), dtype=FLOAT)
+    if metadata["can_pass_through_zones"]:
+        node_traffic_mat[:zones, :zones] = traffic_mat
+    else:
+        node_traffic_mat[:zones, -zones:] = traffic_mat
+
+    return Correspondences(traffic_mat=traffic_mat, node_traffic_mat=node_traffic_mat, sources=sources, targets=targets)
 
 
 def update_node_coordinates(node_coords: dict, metadata: dict):
