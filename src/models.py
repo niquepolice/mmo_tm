@@ -14,6 +14,7 @@ class TrafficModel(ABC):
         self.traffic_mat = traffic_mat
 
     def flows_on_shortest(self, times_e: np.ndarray) -> np.ndarray:
+        """Get edge flows distribution for given edge costs"""
         if "times" not in self.graph.edge_properties:
             times = self.graph.new_edge_property("double")
             self.graph.ep["times"] = times

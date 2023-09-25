@@ -2,17 +2,56 @@ import numpy as np
 import time
 from tqdm import tqdm
 
-from src.models import TrafficModel
+from src.models import TrafficModel, BeckmannModel
 
 
-def frank_wolfe():
-    pass
+def frank_wolfe(
+        model: BeckmannModel,
+        eps_abs: float,
+        max_iter: int = 10000,
+        max_time: float = 0,  # max execution time in seconds, 0 for no limit
+        stop_by_crit: bool = True,
+) -> tuple:
+
+    optimal = False
+
+    # init flows, not used in averaging
+    flows_averaged_e = model.flows_on_shortest(model.graph.ep.free_flow_times.a.copy())
+
+    max_dual_func_val = -np.inf
+    dgap_log = []
+
+    rng = range(1000000) if max_iter is None else tqdm(range(max_iter))
+    for k in rng:
+        stepsize = 2 / (k + 2)
+
+        times_e = model.tau(flows_averaged_e)
+        flows_e = model.flows_on_shortest(times_e)
+
+        # dgap_log.append(times_e @ (flows_averaged_e - flows_e))  # FW gap
+
+        flows_averaged_e = flows_e if k == 0 else stepsize * flows_e + (1 - stepsize) * flows_averaged_e
+
+        dual_val = model.dual(times_e, flows_e)
+        max_dual_func_val = max(max_dual_func_val, dual_val)
+
+        # equal to FW gap if dual_val == max_dual_func_val
+        primal = model.primal(flows_averaged_e)
+        dgap_log.append(primal - max_dual_func_val)
+
+        # TODO: try times averaging as in Meruza version
+
+        if stop_by_crit and dgap_log[-1] <= eps_abs:
+            optimal = True
+            break
+
+    return times_e, flows_averaged_e, dgap_log, optimal
 
 
 def ustm(
     model: TrafficModel,
     eps_abs: float,
-    eps_cons_abs: float,
+    eps_cons_abs: float = np.inf,
     max_iter: int = 10000,
     max_time: float = 0,  # max execution time in seconds, 0 for no limit
     stop_by_crit: bool = True,
@@ -31,24 +70,20 @@ def ustm(
     y_start = u_prev = t_prev = np.copy(t_start)
     assert y_start is u_prev  # acceptable at first initialization
     grad_sum_prev = np.zeros(len(t_start))
-    
-    # def func_grad(times_e: np.ndarray):
-    # #     """func = -dual"""
-    #     flows_subgd_e = model.flows_on_shortest(times_e)
-    #     dual_grad = model.dual_subgradient(times_e, flows_subgd_e)
-    #     return -model.dual(times_e, flows_subgd_e), -dual_grad, flows_subgd_e
-         
+
     grad_y = -model.flows_on_shortest(y_start)  # Ф'(y)
     L_value = np.linalg.norm(grad_y) / 10
     
     flows_averaged_e = A = u = t = y = None
-    inner_iters_num = 0
+    optimal = False
 
-    optimal = False 
+    max_dual_func_val = -np.inf
+
     rng = range(1000000) if max_iter is None else tqdm(range(max_iter))
     for k in rng:
         if max_time > 0 and time.time() - time_start > max_time:
             break
+        inner_iters_num = 0
         while True:
             inner_iters_num += 1
     
@@ -66,6 +101,7 @@ def ustm(
             t = (alpha * u + A_prev * t_prev) / A
             # func_t = -func_grad_flows(t)
             func_t = -model.dual(t, model.flows_on_shortest(t))
+            max_dual_func_val = max(max_dual_func_val, -func_t)
 
             lvalue = func_t
             rvalue = (func_y + np.dot(grad_y, t - y) + 0.5 * L_value * np.sum((t - y) ** 2) + 
@@ -90,8 +126,13 @@ def ustm(
         gamma = alpha / A
         flows_averaged_e = flows_y if k == 0 else flows_averaged_e * (1 - gamma) + flows_y * gamma
 
-        dgap_log.append(model.primal(flows_averaged_e) + func_t)
+        dgap_log.append(model.primal(flows_averaged_e) - max_dual_func_val)
         cons_log.append(model.capacity_violation(flows_averaged_e))
+
+        # consider every model.flows_on_shortest() call for fair algs comparison
+        dgap_log += [dgap_log[-1]] * (inner_iters_num * 2 - 1)
+        cons_log += [cons_log[-1]] * (inner_iters_num * 2 - 1)
+
         A_log.append(A)
     
         if stop_by_crit and dgap_log[-1] <= eps_abs and cons_log[-1] <= eps_cons_abs:
@@ -123,6 +164,8 @@ def subgd(
 
     optimal = False
 
+    max_dual_func_val = -np.inf
+
     rng = range(1000000) if max_iter is None else tqdm(range(max_iter))
     for k in rng:
         if 0 < max_time < time.time() - time_start:
@@ -134,11 +177,12 @@ def subgd(
         h = R / (k + 1) ** 0.5 / np.linalg.norm(flows_subgd_e)
 
         dual_val = model.dual(times_e, flows_subgd_e)
+        max_dual_func_val = max(max_dual_func_val, dual_val)
 
         flows_averaged_e = (S * flows_averaged_e + h * flows_subgd_e) / (S + h)
         S += h
 
-        dgap_log.append(model.primal(flows_averaged_e) - dual_val)
+        dgap_log.append(model.primal(flows_averaged_e) - max_dual_func_val)
         cons_log.append(model.capacity_violation(flows_averaged_e))
 
         if dgap_log[-1] <= eps_abs and cons_log[-1] <= eps_cons_abs:
