@@ -1,3 +1,5 @@
+from typing import Union
+
 import numpy as np
 import networkx as nx
 import graph_tool as gt
@@ -22,9 +24,21 @@ def sum_flows_from_tree(source: int, targets: np.ndarray, pred_map_arr: np.ndarr
     return flows_e
 
 
-def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.EdgePropertyMap) -> np.ndarray:
+def distance_mat_gt(graph: gt.Graph, sources: np.ndarray, targets: np.ndarray, weights: gt.EdgePropertyMap):
+    distance_mat = np.zeros((sources.size, targets.size))
+    for i, source in enumerate(sources):  # i = index of source in traffic_mat
+        dist_map = shortest_distance(graph, source=source, target=targets, weights=weights, pred_map=False)
+        distance_mat[i] = dist_map
+
+    return distance_mat
+
+
+def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.EdgePropertyMap,
+                         return_distance_mat: bool = False) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
     """Returns flows on edges for each ij-pair
-    (obtained from flows on shortest paths w.r.t costs induced by dual_costs)"""
+    (obtained from flows on shortest paths w.r.t given weights(costs))
+    Also may return distance matrix for given weights
+    """
     num_nodes, num_edges = graph.num_vertices(), graph.num_edges()
 
     traffic_mat, sources, targets = corrs.traffic_mat, corrs.sources, corrs.targets
@@ -36,8 +50,10 @@ def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.Ed
 
     flows_on_shortest_e = np.zeros(num_edges)
 
+    if return_distance_mat:
+        distance_mat = np.zeros((sources.size, targets.size))
     for i, source in enumerate(sources):  # i = index of source in traffic_mat
-        _, pred_map = shortest_distance(graph, source=source, target=targets, weights=weights, pred_map=True)
+        dist_map, pred_map = shortest_distance(graph, source=source, target=targets, weights=weights, pred_map=True)
         flows_on_shortest_e += sum_flows_from_tree(
             source=source,
             targets=targets,
@@ -45,8 +61,10 @@ def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.Ed
             traffic_mat_row=traffic_mat[i],
             edge_to_ind=edge_to_ind,
         )
+        if return_distance_mat:
+            distance_mat[i] = dist_map
 
-    return flows_on_shortest_e
+    return (flows_on_shortest_e, distance_mat) if return_distance_mat else flows_on_shortest_e
 
 
 def get_graphtool_graph(nx_graph: nx.Graph) -> gt.Graph:
