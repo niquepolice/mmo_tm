@@ -10,13 +10,22 @@ def solve_min_cost_concurrent_flow(
     traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
     incidence_mat = nx.incidence_matrix(graph, oriented=True).todense()
 
-    capacities = np.array(list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32)
-    costs = np.array(list(nx.get_edge_attributes(graph, "free_flow_times").values()), dtype=np.float32)
+    capacities = np.array(
+        list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32
+    )
+    costs = np.array(
+        list(nx.get_edge_attributes(graph, "free_flow_times").values()),
+        dtype=np.float32,
+    )
 
     flows = cp.Variable((len(graph.edges), traffic_mat.shape[0]))
     prob = cp.Problem(
         cp.Minimize(cp.sum(flows, axis=1) @ costs),
-        [cp.sum(flows, axis=1) <= capacities, (incidence_mat @ flows).T == -traffic_lapl, flows >= 0],
+        [
+            cp.sum(flows, axis=1) <= capacities,
+            (incidence_mat @ flows).T == -traffic_lapl,
+            flows >= 0,
+        ],
     )
     prob.solve(**solver_kwargs)
     flows = flows.value if flows is not None else None

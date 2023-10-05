@@ -11,8 +11,13 @@ from src.commons import Correspondences
 
 
 @numba.njit
-def sum_flows_from_tree(source: int, targets: np.ndarray, pred_map_arr: np.ndarray, traffic_mat_row: np.ndarray,
-                        edge_to_ind: numba.typed.Dict) -> np.ndarray:
+def sum_flows_from_tree(
+    source: int,
+    targets: np.ndarray,
+    pred_map_arr: np.ndarray,
+    traffic_mat_row: np.ndarray,
+    edge_to_ind: numba.typed.Dict,
+) -> np.ndarray:
     num_edges = len(edge_to_ind)
     flows_e = np.zeros(num_edges)
     for j, v in enumerate(targets):  # j = index of target in traffic_mat
@@ -24,17 +29,28 @@ def sum_flows_from_tree(source: int, targets: np.ndarray, pred_map_arr: np.ndarr
     return flows_e
 
 
-def distance_mat_gt(graph: gt.Graph, sources: np.ndarray, targets: np.ndarray, weights: gt.EdgePropertyMap):
+def distance_mat_gt(
+    graph: gt.Graph,
+    sources: np.ndarray,
+    targets: np.ndarray,
+    weights: gt.EdgePropertyMap,
+):
     distance_mat = np.zeros((sources.size, targets.size))
     for i, source in enumerate(sources):  # i = index of source in traffic_mat
-        dist_map = shortest_distance(graph, source=source, target=targets, weights=weights, pred_map=False)
+        dist_map = shortest_distance(
+            graph, source=source, target=targets, weights=weights, pred_map=False
+        )
         distance_mat[i] = dist_map
 
     return distance_mat
 
 
-def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.EdgePropertyMap,
-                         return_distance_mat: bool = False) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
+def flows_on_shortest_gt(
+    graph: gt.Graph,
+    corrs: Correspondences,
+    weights: gt.EdgePropertyMap,
+    return_distance_mat: bool = False,
+) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
     """Returns flows on edges for each ij-pair
     (obtained from flows on shortest paths w.r.t given weights(costs))
     Also may return distance matrix for given weights
@@ -44,7 +60,9 @@ def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.Ed
     traffic_mat, sources, targets = corrs.traffic_mat, corrs.sources, corrs.targets
 
     edges_arr = graph.get_edges()
-    edge_to_ind = numba.typed.Dict.empty(key_type=types.UniTuple(types.int64, 2), value_type=numba.core.types.int64)
+    edge_to_ind = numba.typed.Dict.empty(
+        key_type=types.UniTuple(types.int64, 2), value_type=numba.core.types.int64
+    )
     for i, edge in enumerate(edges_arr):
         edge_to_ind[tuple(edge)] = i
 
@@ -53,7 +71,9 @@ def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.Ed
     if return_distance_mat:
         distance_mat = np.zeros((sources.size, targets.size))
     for i, source in enumerate(sources):  # i = index of source in traffic_mat
-        dist_map, pred_map = shortest_distance(graph, source=source, target=targets, weights=weights, pred_map=True)
+        dist_map, pred_map = shortest_distance(
+            graph, source=source, target=targets, weights=weights, pred_map=True
+        )
         flows_on_shortest_e += sum_flows_from_tree(
             source=source,
             targets=targets,
@@ -64,7 +84,11 @@ def flows_on_shortest_gt(graph: gt.Graph, corrs: Correspondences, weights: gt.Ed
         if return_distance_mat:
             distance_mat[i] = dist_map
 
-    return (flows_on_shortest_e, distance_mat) if return_distance_mat else flows_on_shortest_e
+    return (
+        (flows_on_shortest_e, distance_mat)
+        if return_distance_mat
+        else flows_on_shortest_e
+    )
 
 
 def get_graphtool_graph(nx_graph: nx.Graph) -> gt.Graph:
@@ -82,15 +106,21 @@ def get_graphtool_graph(nx_graph: nx.Graph) -> gt.Graph:
     nx_edge_to_ind = dict(zip(nx_edges, list(range(len(nx_graph.edges())))))
 
     edge_attribute_names = list(list(nx_graph.edges(data=True))[0][-1].keys())
-    edge_attributes = [edge_dict_to_arr(nx.get_edge_attributes(nx_graph, attr_name), nx_edge_to_ind)
-                       for attr_name in edge_attribute_names]
+    edge_attributes = [
+        edge_dict_to_arr(nx.get_edge_attributes(nx_graph, attr_name), nx_edge_to_ind)
+        for attr_name in edge_attribute_names
+    ]
 
     nx_nodes = list(nx_graph.nodes())
     edge_list = []
     for i, e in enumerate(nx_graph.edges()):
-        edge_list.append((*[nx_nodes.index(v) for v in e],  *[attr[i] for attr in edge_attributes]))
+        edge_list.append(
+            (*[nx_nodes.index(v) for v in e], *[attr[i] for attr in edge_attributes])
+        )
 
-    gt_graph = gt.Graph(edge_list, eprops=[(attr_name, "double") for attr_name in edge_attribute_names])
+    gt_graph = gt.Graph(
+        edge_list, eprops=[(attr_name, "double") for attr_name in edge_attribute_names]
+    )
 
     return gt_graph
 
@@ -102,4 +132,3 @@ def get_graph_props(graph: gt.Graph) -> tuple:
     caps = graph.ep.capacities.a
 
     return fft, mu, rho, caps
-

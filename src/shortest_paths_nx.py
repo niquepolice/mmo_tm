@@ -2,7 +2,9 @@ import networkx as nx
 import numpy as np
 
 
-def flows_on_shortest_nx(graph: nx.Graph, traffic_mat: np.ndarray, costs: np.ndarray) -> np.ndarray:
+def flows_on_shortest_nx(
+    graph: nx.Graph, traffic_mat: np.ndarray, costs: np.ndarray
+) -> np.ndarray:
     """Returns flows on edges for each ij-pair
     (obtained from flows on shortest paths w.r.t costs induced by dual_costs)"""
     n, m = graph.number_of_nodes(), graph.number_of_edges()
