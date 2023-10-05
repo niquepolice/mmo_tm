@@ -12,7 +12,7 @@ Repo contains implementations of basic algorithms for the equilibrium traffic as
 $$\sum_e \sigma_e(f_e) \to \min_{f \in F_d},$$
 
 and the combined travel-demand (twostage) problem:
-$$\gamma \sum_e\sigma_e(f_e) + \sum_{ij}d_{ij}\ln d_{ij} \to \min_{\substack{f\in F_d\\\sum_j d_{ij}=l_i\\ \sum_i d_{ij}=w_j}}.$$
+$$\gamma \sum_e\sigma_e(f_e) + \sum_{ij}d_{ij}\ln d_{ij} \to \min_{\substack{f\in F_d \\\ \sum_j d_{ij}=l_i\\ \sum_i d_{ij}=w_j}}.$$
 
 # Installation
 1. Grab bstabler's TransportationNetworks sumbodule: use `git clone  --recurse submodules`
