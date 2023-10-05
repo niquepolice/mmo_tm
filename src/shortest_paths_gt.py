@@ -19,14 +19,14 @@ def sum_flows_from_tree(
     edge_to_ind: numba.typed.Dict,
 ) -> np.ndarray:
     num_edges = len(edge_to_ind)
-    flows_e = np.zeros(num_edges)
+    flows = np.zeros(num_edges)
     for j, v in enumerate(targets):  # j = index of target in traffic_mat
         corr = traffic_mat_row[j]
         while v != source:
             v_pred = pred_map_arr[v]
-            flows_e[edge_to_ind[(v_pred, v)]] += corr
+            flows[edge_to_ind[(v_pred, v)]] += corr
             v = v_pred
-    return flows_e
+    return flows
 
 
 def distance_mat_gt(

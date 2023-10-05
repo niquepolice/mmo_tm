@@ -20,13 +20,13 @@ import src.sinkhorn as sinkhorn
 
 
 def maybe_create_and_get_times_ep(
-    graph: gt.Graph, times_e: np.ndarray
+    graph: gt.Graph, times: np.ndarray
 ) -> gt.EdgePropertyMap:
     if "times" not in graph.edge_properties:
-        times = graph.new_edge_property("double")
-        graph.ep["times"] = times
+        times_ep = graph.new_edge_property("double")
+        graph.ep["times"] = times_ep
 
-    graph.ep.times.a = times_e
+    graph.ep.times.a = times
     return graph.ep.times
 
 
@@ -42,7 +42,7 @@ class Model(ABC):
         ...
 
     @abstractmethod
-    def dual_composite_prox(self, times_e: np.ndarray, stepsize: float) -> np.ndarray:
+    def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
         ...
 
     @abstractmethod
@@ -73,7 +73,7 @@ class TrafficModel(Model, ABC):
         self.correspondences = correspondences
 
     def flows_on_shortest(
-        self, times_e: np.ndarray, return_distance_mat: bool = False
+        self, times: np.ndarray, return_distance_mat: bool = False
     ) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
         """Get edge flows distribution for given edge costs, if all agents use the shortest paths
         May also return distance matrix if the flag is set
@@ -82,21 +82,21 @@ class TrafficModel(Model, ABC):
         return flows_on_shortest_gt(
             self.graph,
             self.correspondences,
-            maybe_create_and_get_times_ep(self.graph, times_e),
+            maybe_create_and_get_times_ep(self.graph, times),
             return_distance_mat,
         )
 
-    def dual(self, times_e, flows_subgd) -> float:
-        return float(times_e @ flows_subgd - self.composite(times_e))
+    def dual(self, times, flows_subgd) -> float:
+        return float(times @ flows_subgd - self.composite(times))
 
     @abstractmethod
-    def composite(self, times_e: np.ndarray) -> float:
+    def composite(self, times: np.ndarray) -> float:
         """Composite term in dual function, denoted by h"""
         ...
 
-    def capacity_violation(self, flows_e: np.ndarray) -> float:
+    def capacity_violation(self, flows: np.ndarray) -> float:
         """Could be ignored for Beckmann model"""
-        return np.linalg.norm(np.maximum(0, flows_e - self.graph.ep.capacities.a))
+        return np.linalg.norm(np.maximum(0, flows - self.graph.ep.capacities.a))
 
     def set_traffic_mat(self, traffic_mat: np.ndarray):
         """For two-stage models"""
@@ -117,44 +117,44 @@ class TrafficModel(Model, ABC):
 class BeckmannModel(TrafficModel):
     """Dualized on the constraint that flows respect correspondences"""
 
-    def tau(self, flows_e):
+    def tau(self, flows):
         fft, mu, rho, caps = get_graph_props(self.graph)
 
-        return fft * (1 + rho * (flows_e / caps) ** (1 / mu))
+        return fft * (1 + rho * (flows / caps) ** (1 / mu))
 
-    def tau_inv(self, times_e):
+    def tau_inv(self, times):
         fft, mu, rho, caps = get_graph_props(self.graph)
 
-        return caps * ((times_e / fft - 1) / rho) ** mu
+        return caps * ((times / fft - 1) / rho) ** mu
 
-    def sigma(self, flows_e) -> np.ndarray:
+    def sigma(self, flows) -> np.ndarray:
         fft, mu, rho, caps = get_graph_props(self.graph)
 
-        return fft * flows_e * (1 + (rho / (1 + 1 / mu)) * (flows_e / caps) ** (1 / mu))
+        return fft * flows * (1 + (rho / (1 + 1 / mu)) * (flows / caps) ** (1 / mu))
 
-    def sigma_star(self, times_e) -> np.ndarray:
+    def sigma_star(self, times) -> np.ndarray:
         fft, mu, rho, caps = get_graph_props(self.graph)
 
-        dt = np.maximum(0, times_e - fft)
+        dt = np.maximum(0, times - fft)
 
         return caps * (dt / (fft * rho)) ** mu * dt / (1 + mu)
 
-    def primal(self, flows_e: np.ndarray) -> float:
-        return self.sigma(flows_e).sum()
+    def primal(self, flows: np.ndarray) -> float:
+        return self.sigma(flows).sum()
 
-    def composite(self, times_e: np.ndarray) -> float:
-        return self.sigma_star(times_e).sum()
+    def composite(self, times: np.ndarray) -> float:
+        return self.sigma_star(times).sum()
 
     def dual_subgradient(
-        self, times_e: np.ndarray, flows_subgd_e: np.ndarray
+        self, times: np.ndarray, flows_subgd: np.ndarray
     ) -> np.ndarray:
-        return flows_subgd_e - self.tau_inv(times_e)
+        return flows_subgd - self.tau_inv(times)
 
-    def dual_composite_prox(self, times_e: np.ndarray, stepsize: float) -> np.ndarray:
+    def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
         fft, mu, rho, caps = get_graph_props(self.graph)
 
         # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
-        x_0 = (times_e - fft) / (fft * rho)
+        x_0 = (times - fft) / (fft * rho)
         a = stepsize * caps / (fft * rho)
 
         x = newton(x_0_arr=x_0, a_arr=a, mu_arr=mu)
@@ -173,24 +173,24 @@ class BeckmannModel(TrafficModel):
 class SDModel(TrafficModel):
     """Dualized on the capacity constraints"""
 
-    def primal(self, flows_e: np.ndarray) -> float:
-        return float(self.graph.ep.free_flow_times.a @ flows_e)
+    def primal(self, flows: np.ndarray) -> float:
+        return float(self.graph.ep.free_flow_times.a @ flows)
 
-    def composite(self, times_e: np.ndarray) -> float:
+    def composite(self, times: np.ndarray) -> float:
         fft = self.graph.ep.free_flow_times.a
         caps = self.graph.ep.capacities.a
-        return (times_e - fft) @ caps
+        return (times - fft) @ caps
 
     def dual_subgradient(
-        self, times_e: np.ndarray, flows_subgd_e: np.ndarray
+        self, times: np.ndarray, flows_subgd: np.ndarray
     ) -> np.ndarray:
-        return flows_subgd_e - self.graph.ep.capacities.a
+        return flows_subgd - self.graph.ep.capacities.a
 
-    def dual_composite_prox(self, times_e: np.ndarray, stepsize: float) -> np.ndarray:
+    def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
         """prox_{stepsize * h}(t - stepsize * Ф'(t)) = proj(t - stepsize * Q'(t))"""
         fft = self.graph.ep.free_flow_times.a
         caps = self.graph.ep.capacities.a
-        return np.maximum(fft, times_e - stepsize * caps)
+        return np.maximum(fft, times - stepsize * caps)
 
     def solve_cvxpy(self, **solver_kwargs):
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
@@ -237,7 +237,7 @@ class TwostageModel(Model):
         )
         return traffic_mat, self.lambda_l_prev, self.lambda_w_prev
 
-    def distance_mat(self, times_e) -> np.ndarray:
+    def distance_mat(self, times) -> np.ndarray:
         sources, targets = (
             self.traffic_model.correspondences.sources,
             self.traffic_model.correspondences.targets,
@@ -247,12 +247,12 @@ class TwostageModel(Model):
             self.traffic_model.graph,
             sources,
             targets,
-            maybe_create_and_get_times_ep(self.traffic_model.graph, times_e),
+            maybe_create_and_get_times_ep(self.traffic_model.graph, times),
         )
 
-    def primal(self, flows_e: np.ndarray, traffic_mat: np.ndarray) -> float:
+    def primal(self, flows: np.ndarray, traffic_mat: np.ndarray) -> float:
         return (
-            self.gamma * self.traffic_model.primal(flows_e)
+            self.gamma * self.traffic_model.primal(flows)
             + (traffic_mat * np.log(traffic_mat)).sum()
         )
 
