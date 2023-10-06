@@ -1,0 +1,15 @@
+name: tm
+channels:
+  - conda-forge 
+dependencies:
+  - python=3.11
+  - graph-tool
+  - pandas
+  - numba
+  - tqdm
+  - cvxpy
+  - matplotlib
+  - ipykernel
+  - pip
+  - pip:
+    - jupyter
