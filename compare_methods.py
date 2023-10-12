@@ -1,7 +1,7 @@
 import src.test as test
 from pathlib import Path
 from src.algs import subgd, ustm, frank_wolfe, cyclic
-from src.my_algs import conjugate_frank_wolfe
+from src.my_algs import conjugate_frank_wolfe , Bi_conjugate_frank_wolfe , N_conjugate_frank_wolfe
 
 
 networks_path = Path("./TransportationNetworks")
@@ -23,20 +23,29 @@ beckmann_model , city_info = test.init_city(networks_path=networks_path ,folder=
 eps_abs = city_info['eps_abs']
 
 ##EXPERIMENTS RUN
-max_iter = 1000
+max_iter = 100
 list_methods = []
 
-## FWM
-list_methods.append((frank_wolfe ,'frank_wolfe' , 
-    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
 
-##CFWM 
-list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe' , 
-    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+##NFW
+cnts = [3,4,5]
+for cnt in cnts :
+    list_methods.append((N_conjugate_frank_wolfe ,'N_conjugate_frank_wolfe linesearch N =' + str(cnt) , 
+        {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'cnt_conjugates' : cnt  } ))
 
-##CFWM linesearch
-list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
-    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
+##BCFW linesearch
+# list_methods.append((Bi_conjugate_frank_wolfe ,'Bi_conjugate_frank_wolfe linesearch' , 
+#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
+# ##CFWM linesearch
+# list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
+#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
+# ##CFWM 
+# list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe' , 
+#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+# ## FWM
+# list_methods.append((frank_wolfe ,'frank_wolfe' , 
+#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+
 
 
 experiments = test.run_experiment(list_methods , model=beckmann_model, city_name=folder , max_iter=max_iter)
