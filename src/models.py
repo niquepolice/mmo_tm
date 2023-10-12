@@ -122,6 +122,10 @@ class BeckmannModel(TrafficModel):
 
         return fft * (1 + rho * (flows / caps) ** (1 / mu))
 
+    def diff_tau(self, flows):
+        fft, mu, rho, caps = get_graph_props(self.graph)
+        return (1.0 / mu) * fft * rho * np.power(flows , (1.0 / mu) - 1.0 ) / np.power(caps, 1.0 / mu)
+
     def tau_inv(self, times):
         fft, mu, rho, caps = get_graph_props(self.graph)
 

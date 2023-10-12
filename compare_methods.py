@@ -1,16 +1,18 @@
 import src.test as test
 from pathlib import Path
 from src.algs import subgd, ustm, frank_wolfe, cyclic
+from src.my_algs import conjugate_frank_wolfe
+
 
 networks_path = Path("./TransportationNetworks")
 
-folder = "SiouxFalls"
-net_name = "SiouxFalls_net"
-traffic_mat_name = "SiouxFalls_trips"
+# folder = "SiouxFalls"
+# net_name = "SiouxFalls_net"
+# traffic_mat_name = "SiouxFalls_trips"
 
-# folder = "Anaheim"
-# net_name = "Anaheim_net"
-# traffic_mat_name = "Anaheim_trips"
+folder = "Anaheim"
+net_name = "Anaheim_net"
+traffic_mat_name = "Anaheim_trips"
     
 # folder = "Barcelona"
 # net_name = "Barcelona_net"
@@ -21,14 +23,20 @@ beckmann_model , city_info = test.init_city(networks_path=networks_path ,folder=
 eps_abs = city_info['eps_abs']
 
 ##EXPERIMENTS RUN
-max_iter = 100
+max_iter = 1000
 list_methods = []
-
 
 ## FWM
 list_methods.append((frank_wolfe ,'frank_wolfe' , 
     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
 
+##CFWM 
+list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe' , 
+    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+
+##CFWM linesearch
+list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
+    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
 
 
 experiments = test.run_experiment(list_methods , model=beckmann_model, city_name=folder , max_iter=max_iter)
