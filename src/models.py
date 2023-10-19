@@ -71,7 +71,14 @@ class TrafficModel(Model, ABC):
         self.nx_graph = nx_graph
         self.graph = get_graphtool_graph(nx_graph)
         self.correspondences = correspondences
-
+        
+        fft, mu, rho, caps = get_graph_props(self.graph)
+        self.is_inf = np.where(np.isinf(mu))
+        self.is_not_inf = ~np.isin(np.arange(len(mu)), self.is_inf)
+        assert (np.all(rho[self.is_inf] == 0 ))
+        # assert (np.all(rho[self.is_not_inf] == 0 ))
+    
+    
     def flows_on_shortest(
         self, times: np.ndarray, return_distance_mat: bool = False
     ) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
@@ -119,31 +126,48 @@ class BeckmannModel(TrafficModel):
 
     def tau(self, flows):
         fft, mu, rho, caps = get_graph_props(self.graph)
-
-        return fft * (1 + rho * (flows / caps) ** (1 / mu))
+        
+        result = np.empty(len(mu))
+        result[self.is_inf] = fft[self.is_inf]*(1 + rho[self.is_inf])
+        result[self.is_not_inf] = fft[self.is_not_inf] * (1 + rho[self.is_not_inf] * (flows[self.is_not_inf] / caps[self.is_not_inf]) ** (1 / mu[self.is_not_inf]))
+        return result
 
     def diff_tau(self, flows):
         fft, mu, rho, caps = get_graph_props(self.graph)
-        return (1.0 / mu) * fft * rho * np.power(flows , (1.0 / mu) - 1.0 ) / np.power(caps, 1.0 / mu)
+        
+        result = np.empty(len(mu))
+        result[self.is_inf] = 0
+        result[self.is_not_inf] = (1.0 / mu[self.is_not_inf]) * fft[self.is_not_inf] * rho[self.is_not_inf] * np.power(flows[self.is_not_inf] , (1.0 / mu[self.is_not_inf]) - 1.0 ) / np.power(caps[self.is_not_inf], 1.0 / mu[self.is_not_inf])
+        return result
 
     def tau_inv(self, times):
         fft, mu, rho, caps = get_graph_props(self.graph)
-
-        return caps * ((times / fft - 1) / rho) ** mu
+        result = np.empty(len(mu))
+        result[self.is_inf] = 0
+        result[self.is_not_inf] = caps[self.is_not_inf] * ((times[self.is_not_inf] / fft[self.is_not_inf] - 1) / rho[self.is_not_inf]) ** mu[self.is_not_inf]
+        return result
 
     def sigma(self, flows) -> np.ndarray:
-        fft, mu, rho, caps = get_graph_props(self.graph)
 
-        return fft * flows * (1 + (rho / (1 + 1 / mu)) * (flows / caps) ** (1 / mu))
+        fft, mu, rho, caps = get_graph_props(self.graph)
+        result = np.empty(len(mu))
+        result[self.is_inf] = fft[self.is_inf]*flows[self.is_inf]*(1 + rho[self.is_inf]) 
+        result[self.is_not_inf] = fft[self.is_not_inf] * flows[self.is_not_inf] * (1 + (rho[self.is_not_inf] / (1 + 1 / mu[self.is_not_inf])) * (flows[self.is_not_inf] / caps[self.is_not_inf]) ** (1 / mu[self.is_not_inf]))
+        return result
+
 
     def sigma_star(self, times) -> np.ndarray:
         fft, mu, rho, caps = get_graph_props(self.graph)
 
         dt = np.maximum(0, times - fft)
 
-        return caps * (dt / (fft * rho)) ** mu * dt / (1 + mu)
+        result = np.empty(len(mu))
+        result[self.is_inf] = 0
+        result[self.is_not_inf] = caps[self.is_not_inf] * (dt[self.is_not_inf] / (fft[self.is_not_inf] * rho[self.is_not_inf])) ** mu[self.is_not_inf] * dt[self.is_not_inf] / (1 + mu[self.is_not_inf])
+        
+        return result
 
-    def primal(self, flows: np.ndarray) -> float:
+    def primal(self, flows: np.ndarray) -> float:   
         return self.sigma(flows).sum()
 
     def composite(self, times: np.ndarray) -> float:

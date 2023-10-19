@@ -1,155 +1,158 @@
 import src.test as test
 from pathlib import Path
 from src.algs import subgd, ustm, frank_wolfe, cyclic
-from src.my_algs import conjugate_frank_wolfe , Bi_conjugate_frank_wolfe , N_conjugate_frank_wolfe
+from src.my_algs import conjugate_frank_wolfe , Bi_conjugate_frank_wolfe , N_conjugate_frank_wolfe ,fukushima_frank_wolfe
 
 
 networks_path = Path("./TransportationNetworks")
+
 
 # folder = "SiouxFalls"
 # net_name = "SiouxFalls_net"
 # traffic_mat_name = "SiouxFalls_trips"
 
-folder = "Anaheim"
-net_name = "Anaheim_net"
-traffic_mat_name = "Anaheim_trips"
+# folder = "Anaheim"
+# net_name = "Anaheim_net"
+# traffic_mat_name = "Anaheim_trips"
     
+# Не работает (mu != inf , но rho = 0) (sigma * = ... / rho ...) 
+# folder = "Philadelphia"
+# net_name = "Philadelphia_net"
+# traffic_mat_name = "Philadelphia_trips"
+
+# rho = 0
+# folder = "Berlin-Tiergarten"
+# net_name = 'berlin-tiergarten_net'
+# traffic_mat_name = 'berlin-tiergarten_trips'
+
+folder = "Terrassa-Asymmetric"
+net_name = 'Terrassa-Asym_net'
+traffic_mat_name = 'Terrassa-Asym_trips'
+
+# folder = "Eastern-Massachusetts"
+# net_name = 'EMA_net'
+# traffic_mat_name = 'EMA_trips'
+
+# rho = 0
+# folder = "Chicago-Sketch"
+# net_name = 'ChicagoSketch_net'
+# traffic_mat_name = 'ChicagoSketch_trips'
+
+
+# rho = 0
+# folder = "Berlin-Mitte-Center"
+# net_name = 'berlin-mitte-center_net'
+# traffic_mat_name = 'berlin-mitte-center_trips'
+
+# Не работает (ибо пока архитектура не учитывает дуги )
+# folder = "Berlin-Center"
+# net_name = 'berlin-center_net'
+# traffic_mat_name = "berlin-center_trips"
+
+# folder = "Berlin-Friedrichshain"
+# net_name = "friedrichshain-center_net"
+# traffic_mat_name = "friedrichshain-center_trips"
+
+# key error  в sum_flows_from_tree  
+# folder = "Winnipeg-Asymmetric"
+# net_name = 'Winnipeg-Asym_net'
+# traffic_mat_name = "Winnipeg-Asym_trips"
+
+# folder = "Winnipeg"
+# net_name = 'Winnipeg_net'
+# traffic_mat_name = "Winnipeg_trips"
+
+# folder = "Austin"
+# net_name = 'Austin_net'
+# traffic_mat_name = "Austin_trips"
+
+# rho = 0
 # folder = "Barcelona"
-# net_name = "Barcelona_net"
+# net_name = 'Barcelona_net'
 # traffic_mat_name = "Barcelona_trips"
+
+# folder = "Berlin-Mitte-Prenzlauerberg-Friedrichshain-Center"
+# net_name = 'berlin-mitte-prenzlauerberg-friedrichshain-center_net'
+# traffic_mat_name = "berlin-mitte-prenzlauerberg-friedrichshain-center_trips"
+
+# folder = "Hessen-Asymmetric"
+# net_name = 'Hessen-Asym_net'
+# traffic_mat_name = "Hessen-Asym_trips"
+
+# rho = 0 
+# folder = "GoldCoast"
+# net_name = 'Goldcoast_network_2016_01'
+# traffic_mat_name = "Goldcoast_trips_2016_01"
+
+
 
 ## LOAD CITY 
 beckmann_model , city_info = test.init_city(networks_path=networks_path ,folder=folder ,net_name=net_name,traffic_mat_name=traffic_mat_name)
 eps_abs = city_info['eps_abs']
 
-##EXPERIMENTS RUN
-max_iter = 100
+# from collections import Counter
+
+# for k ,v in Counter(beckmann_model.graph.ep.mu.a).items() :
+#     print(k , v)
+
+# print('asdad')
+
+# for k ,v in Counter(beckmann_model.graph.ep.rho).items() :
+#     print(k , v)
+
+
+# ##EXPERIMENTS RUN
+max_iter = 1000
 list_methods = []
 
+## FUKUSHIMA FW
+
+weight_param = [0.15]
+for weight in weight_param :
+    list_methods.append((fukushima_frank_wolfe ,'fukushima_frank_wolfe linesearch weighted =' + str(weight) , 
+        {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'weight_parameter' : weight  } ))
+# cnts = [5]
+# for cnt in cnts :
+#     list_methods.append((fukushima_frank_wolfe ,'fukushima_frank_wolfe linesearch N =' + str(cnt) , 
+#         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'cnt_directional' : cnt  } ))
 
 ##NFW
-cnts = [3,4,5]
+cnts = [3,4]
 for cnt in cnts :
     list_methods.append((N_conjugate_frank_wolfe ,'N_conjugate_frank_wolfe linesearch N =' + str(cnt) , 
         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'cnt_conjugates' : cnt  } ))
 
-##BCFW linesearch
+# ##BCFW linesearch
 # list_methods.append((Bi_conjugate_frank_wolfe ,'Bi_conjugate_frank_wolfe linesearch' , 
 #     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
-# ##CFWM linesearch
+# # ##CFWM linesearch
 # list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
 #     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
-# ##CFWM 
+# # ##CFWM 
 # list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe' , 
 #     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
-# ## FWM
-# list_methods.append((frank_wolfe ,'frank_wolfe' , 
-#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+# # ## FWM
+list_methods.append((frank_wolfe ,'frank_wolfe' , 
+    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+# # ## FWM linesearch
+list_methods.append((frank_wolfe ,'frank_wolfe linesearch' , 
+    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False ,'linesearch':True}  ))
+# # method , name , solver_kwargs = list_methods[0]
+# # result = test.run_method(method , name , solver_kwargs , beckmann_model ,city_name = folder , max_iter = max_iter)
+
+# # dgaps =result[0][0]['duality_gap'] 
+# # steps = result[1]
 
 
+# # test.plt.figure(figsize = (20, 20))
+# # test.plt.plot(dgaps)
+# # test.plt.scatter(steps , dgaps[steps] , color = 'red')
+# # test.plt.yscale('log')
+# # test.plt.show()
+# # plt.plot(result[''])
 
 experiments = test.run_experiment(list_methods , model=beckmann_model, city_name=folder , max_iter=max_iter)
 
-#DISPLAY RESULTS
-test.plot( experiments , name_output_values='duality_gap')
-
-
-
-
-
-#NFWM
-# N = 1
-# list_methods.append(( 'cfwm', 'Nconjugate Frank Wolfe linesearch , N =' +str(N) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True , 'NFW': N} ))
-# N = 8
-# list_methods.append(( 'cfwm', 'Nconjugate Frank Wolfe linesearch , N =' +str(N) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True , 'NFW': N} ))
-# N = 6
-# list_methods.append(( 'cfwm', 'Nconjugate Frank Wolfe linesearch , N =' +str(N) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True , 'NFW': N} ))
-# N = 5
-# list_methods.append(( 'cfwm', 'Nconjugate Frank Wolfe linesearch , N =' +str(N) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True , 'NFW': N} ))
-# N = 4
-# list_methods.append(( 'cfwm', 'Nconjugate Frank Wolfe linesearch , N =' +str(N) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True , 'NFW': N} ))
-# N = 3
-# list_methods.append(( 'cfwm', 'Nconjugate Frank Wolfe linesearch , N =' +str(N) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True , 'NFW': N} ))
-# N = 2
-# list_methods.append(( 'cfwm', 'Nconjugate Frank Wolfe linesearch , N =' +str(N) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True , 'NFW': N} ))
-
-
-### FWM
-# list_methods.append(( 'fwm', 'Frank Wolfe' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 1000, 'save_history' : True} ))
-### FWM linesearch
-# list_methods.append(( 'fwm', 'Frank Wolfe linesearch' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "linesearch" : True} ))
-### FWM lambda
-# list_methods.append(( 'fwm', 'Frank Wolfe lambda_k ='+str(1.5) , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter',
-#                  'verbose' : True, 'verbose_step': 2000, 'save_history' : True , 'lambda_k': 1.5} ))
-
-
-### CFWM
-# list_methods.append(( 'cfwm', 'Conjugate Frank Wolfe' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True , "alpha_default" : 0.6 } ))
-### CFWM linesearch
-# list_methods.append(( 'cfwm', 'Conjugate Frank Wolfe linesearch' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': verbose_step, 'save_history' : True , "alpha_default" : 0.6 , "linesearch" :True} ))
-
-### FWF weighted linesearch
-# weights = [0.15]
-# for w in weights :
-#     list_methods.append(( 'fwf' , 'Fukushima Frank-Wolfe weighted(linesearch) =' + str(w) ,
-#         {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': verbose_step, 'save_history' : True , 'weight_parameter' : w ,  'linesearch': True }))
-
-### FWF weighted
-# weights = [ 0.15 , 0.2 ]
-# for w in weights :
-#     list_methods.append(( 'fwf' , 'Fukushima Frank-Wolfe weighted =' + str(w) ,
-#         {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': verbose_step, 'save_history' : True , 'weight_parameter' : w }))
-
-### FWF lambda weighted linesearch
-# weights = [ 0.2,0.25,0.3 , 0.35 , 0.4,0.5]
-# for w in weights :
-#     list_methods.append(( 'fwf' , 'Fukushima Frank-Wolfe lambda_k =' +str(1.5)+' weighted =' + str(w) ,
-#         {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': verbose_step, 'save_history' : True , 'weight_parameter' : w ,  'linesearch': True  ,
-#         'lambda_k':1.5}))
-
-
-
-### FWF l_param with lambda mod
-# l_parameters = [2,5]
-# lambda_k = 1.5
-# for l in l_parameters:
-#     list_methods.append(( 'fwf' , 'Fukushima Frank-Wolfe lambda='+str(lambda_k)+' with l_param =' + str(l) ,
-#         {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose' : True, 'verbose_step': 2000, 'save_history' : True ,
-#                       'l_parameter' : l , 'linesearch' : True , 'lambda_k': lambda_k}))
-    
-### Biconjugate Frank Wolfe 
-# list_methods.append(( 'cfwm', 'Biconjugate Frank Wolfe' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter',
-#                  'verbose' : True, 'verbose_step': verbose_step, 'save_history' : True , 'biconjugate' : True } ))
-# ### Biconjugate Frank Wolfe linesearch
-# list_methods.append(( 'cfwm', 'Biconjugate Frank Wolfe(linesearch)' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter',
-#                  'verbose' : True, 'verbose_step': 2000, 'save_history' : True , 'biconjugate' : True , 'linesearch':True } ))
-### USTM
-# eps_abs = 31
-# list_methods.append(( 'ustm', 'USTM with eps_abs ='+ str(eps_abs) , 
-#     {'eps_abs': eps_abs,'max_iter': max_iter, 'stop_crit': 'dual_gap', 'verbose' : True, 'verbose_step': 2000, 'save_history' : True} ))
-### UGD 
-# eps_abs = 31
-# list_methods.append(( 'ugd', 'UGD with eps_abs ='+ str(eps_abs) , 
-#     {'eps_abs': eps_abs,'max_iter': max_iter, 'stop_crit': 'dual_gap','verbose' : True, 'verbose_step': 4000, 'save_history' : True} ))
-### WDA 
-# list_methods.append(( 'wda', 'WDA' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose': True, 'verbose_step': 4000, 'save_history': True} ))
-### WDA-noncomposite
-# list_methods.append(( 'wda', 'WDA noncomposote' , 
-#     {'max_iter' : max_iter, 'stop_crit': 'max_iter','verbose': True, 'verbose_step': 4000, 'save_history' : True} ))
-
+# #DISPLAY RESULTS
+test.plot( experiments , name_output_values=['duality_gap','primal'] , save=True  ,time_iters=True)
 
