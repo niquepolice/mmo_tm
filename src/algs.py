@@ -28,6 +28,7 @@ def frank_wolfe(
     max_dual_func_val = -np.inf
     dgap_log = []
     time_log = []
+    relative_gap_log = []
     primal_log = []
 
     rng = (
@@ -56,6 +57,7 @@ def frank_wolfe(
 
         dual_val = model.dual(times, flows)
         max_dual_func_val = max(max_dual_func_val, dual_val)
+        # print(dual_val ,max_dual_func_val)
         # if max_dual_func_val == dual_val  :
         #     steps.append(k)
 
@@ -63,6 +65,8 @@ def frank_wolfe(
         primal = model.primal(flows_averaged)
         primal_log.append(primal)
         dgap_log.append(primal - max_dual_func_val)
+        # print((primal - max_dual_func_val)/max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
         time_log.append(time.time())
 
         
@@ -73,7 +77,7 @@ def frank_wolfe(
     return (
         times,
         flows_averaged,
-        (dgap_log, np.array(time_log) - time_log[0] , {'primal': primal_log} ),
+        (dgap_log, np.array(time_log) - time_log[0] , {'primal': primal_log , 'relative_gap' : relative_gap_log} ),
         optimal,
     )
 

@@ -11,9 +11,9 @@ networks_path = Path("./TransportationNetworks")
 # net_name = "SiouxFalls_net"
 # traffic_mat_name = "SiouxFalls_trips"
 
-# folder = "Anaheim"
-# net_name = "Anaheim_net"
-# traffic_mat_name = "Anaheim_trips"
+folder = "Anaheim"
+net_name = "Anaheim_net"
+traffic_mat_name = "Anaheim_trips"
     
 # Не работает (mu != inf , но rho = 0) (sigma * = ... / rho ...) 
 # folder = "Philadelphia"
@@ -25,15 +25,15 @@ networks_path = Path("./TransportationNetworks")
 # net_name = 'berlin-tiergarten_net'
 # traffic_mat_name = 'berlin-tiergarten_trips'
 
-folder = "Terrassa-Asymmetric"
-net_name = 'Terrassa-Asym_net'
-traffic_mat_name = 'Terrassa-Asym_trips'
+# folder = "Terrassa-Asymmetric"
+# net_name = 'Terrassa-Asym_net'
+# traffic_mat_name = 'Terrassa-Asym_trips'
 
 # folder = "Eastern-Massachusetts"
 # net_name = 'EMA_net'
 # traffic_mat_name = 'EMA_trips'
 
-# rho = 0
+# rho = 0 and fft = 0
 # folder = "Chicago-Sketch"
 # net_name = 'ChicagoSketch_net'
 # traffic_mat_name = 'ChicagoSketch_trips'
@@ -102,7 +102,7 @@ eps_abs = city_info['eps_abs']
 
 
 # ##EXPERIMENTS RUN
-max_iter = 1000
+max_iter = 100
 list_methods = []
 
 ## FUKUSHIMA FW
@@ -117,24 +117,24 @@ for weight in weight_param :
 #         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'cnt_directional' : cnt  } ))
 
 ##NFW
-cnts = [3,4]
+cnts = [3]
 for cnt in cnts :
     list_methods.append((N_conjugate_frank_wolfe ,'N_conjugate_frank_wolfe linesearch N =' + str(cnt) , 
         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'cnt_conjugates' : cnt  } ))
 
 # ##BCFW linesearch
-# list_methods.append((Bi_conjugate_frank_wolfe ,'Bi_conjugate_frank_wolfe linesearch' , 
-#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
+list_methods.append((Bi_conjugate_frank_wolfe ,'Bi_conjugate_frank_wolfe linesearch' , 
+    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
 # # ##CFWM linesearch
-# list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
-#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
+list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
+    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  ,'alpha_default' : 0.6} ))
 # # ##CFWM 
 # list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe' , 
 #     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
 # # ## FWM
-list_methods.append((frank_wolfe ,'frank_wolfe' , 
-    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
-# # ## FWM linesearch
+# list_methods.append((frank_wolfe ,'frank_wolfe' , 
+#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+# # # ## FWM linesearch
 list_methods.append((frank_wolfe ,'frank_wolfe linesearch' , 
     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False ,'linesearch':True}  ))
 # # method , name , solver_kwargs = list_methods[0]
@@ -154,5 +154,5 @@ list_methods.append((frank_wolfe ,'frank_wolfe linesearch' ,
 experiments = test.run_experiment(list_methods , model=beckmann_model, city_name=folder , max_iter=max_iter)
 
 # #DISPLAY RESULTS
-test.plot( experiments , name_output_values=['duality_gap','primal'] , save=True  ,time_iters=True)
+test.plot( experiments , name_output_values=['relative_gap'] , save=True  ,time_iters=True)
 

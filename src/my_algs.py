@@ -31,14 +31,17 @@ def conjugate_frank_wolfe(
     dgap_log = []
     time_log = []
     primal_log = []
+    relative_gap_log = []
 
     times = model.tau(flows)
     flows = model.flows_on_shortest(times)
     dual_val = model.dual(times, flows)
     max_dual_func_val = max(max_dual_func_val, dual_val)
+        
     primal = model.primal(flows)
     primal_log.append(primal)
     dgap_log.append(primal - max_dual_func_val)
+    relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
     time_log.append(time.time())
 
 
@@ -55,20 +58,32 @@ def conjugate_frank_wolfe(
 
         times = model.tau(flows)
         yk_FW = model.flows_on_shortest(times)
+        # if k > 1 :
+        #     print( k ,'<df(x) k, d k-1>',np.sum((x_star- flows_old) *times))
+        # print(k , sum(times))
 
         if k > 1 :
             hessian = model.diff_tau(flows)
-            denom = np.sum(( x_star - flows ) * hessian * ( yk_FW - flows_old ))
+            # denom = np.sum(( x_star - flows ) * hessian * ( yk_FW - flows_old ))
+            denom = np.sum(( x_star - flows_old ) * hessian * ( x_star - yk_FW ))
             if denom == 0 :
                 alpha = 0
+                print('fuuck')
             else :
-                alpha = np.sum(( x_star - flows ) * hessian * ( yk_FW- flows )) / np.sum(( x_star - flows ) * hessian * ( yk_FW- flows_old )) 
+                # alpha = -np.sum(( x_star - flows ) * hessian * ( yk_FW- flows )) / np.sum(( x_star - flows ) * hessian * ( yk_FW- flows_old )) 
+                alpha = -np.sum(( x_star - flows_old ) * hessian * ( yk_FW- flows ))/denom
+            # print('------------------' , k ,'-------------------------')
             
+
             if alpha < 0 :
                 alpha = 0 
             if alpha > alpha_default :
+                # print('happen')
                 alpha = alpha_default
-
+                # alpha = 0
+        # if k > 1 :
+            # print(alpha*np.sum(times*(x_star - flows)))
+            # print(np.sum( (x_star*alpha + (1-alpha)*yk_FW - flows)*hessian*(x_star - flows_old)   ))
         if k == 1 :
             x_star = yk_FW
         else :
@@ -80,8 +95,15 @@ def conjugate_frank_wolfe(
         else :
             gamma = 2.0/(k + 2)
 
+        # print(np.sum((x_star- flows) *times))
+        # print(-(1-alpha)*np.sum((flows-yk_FW)*times))
+        # print(  np.sum(times*()))
+
+
+        # print(k ,'<df(x k-1) , d k-1>',np.sum((x_star- flows) *times))
         flows_old = flows
         flows = (1.0 - gamma) * flows + gamma * x_star
+
 
         dual_val = model.dual(times, yk_FW)
         max_dual_func_val = max(max_dual_func_val, dual_val)
@@ -92,6 +114,7 @@ def conjugate_frank_wolfe(
         primal = model.primal(flows)
         primal_log.append(primal)
         dgap_log.append(primal - max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
         time_log.append(time.time())
 
         if stop_by_crit and dgap_log[-1] <= eps_abs:
@@ -101,7 +124,7 @@ def conjugate_frank_wolfe(
     return (
         times,
         flows,
-        (dgap_log, np.array(time_log) - time_log[0] , {'primal': primal_log}),
+        (dgap_log, np.array(time_log) - time_log[0] , {'primal': primal_log , 'relative_gap' : relative_gap_log}),
         optimal,
     )
 
@@ -129,6 +152,7 @@ def Bi_conjugate_frank_wolfe(
     dgap_log = []
     time_log = []
     primal_log =[]
+    relative_gap_log = []
 
     times = model.tau(flows)
     flows = model.flows_on_shortest(times)
@@ -137,6 +161,7 @@ def Bi_conjugate_frank_wolfe(
     primal = model.primal(flows)
     primal_log.append(primal)
     dgap_log.append(primal - max_dual_func_val)
+    relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
     time_log.append(time.time())
     rng = (
         range(1,1_000_000)
@@ -242,6 +267,7 @@ def Bi_conjugate_frank_wolfe(
         primal = model.primal(flows)
         primal_log.append(primal)
         dgap_log.append(primal - max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
         time_log.append(time.time())
 
         if stop_by_crit and dgap_log[-1] <= eps_abs:
@@ -251,7 +277,7 @@ def Bi_conjugate_frank_wolfe(
     return (
         t,
         flows,
-        (dgap_log, np.array(time_log) - time_log[0] , {'primal' : primal_log}),
+        (dgap_log, np.array(time_log) - time_log[0] , {'primal' : primal_log , 'relative_gap' : relative_gap_log}),
         optimal,
     )
 
@@ -281,6 +307,7 @@ def N_conjugate_frank_wolfe(
     dgap_log = []
     time_log = []
     primal_log = []
+    relative_gap_log = []
 
     times = model.tau(flows)
     flows = model.flows_on_shortest(times)
@@ -289,6 +316,7 @@ def N_conjugate_frank_wolfe(
     primal = model.primal(flows)
     primal_log.append(primal)
     dgap_log.append(primal - max_dual_func_val)
+    relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
     time_log.append(time.time())
 
     rng = (
@@ -340,6 +368,12 @@ def N_conjugate_frank_wolfe(
             alpha_0 = 1/(1+betta_sum)
             alpha = np.array(betta)[1:] * alpha_0
 
+            alpha_default = 0.01
+            if alpha_0 < alpha_default :
+                alpha_0 = alpha_default
+                alpha = alpha  / np.sum(alpha)
+                alpha = alpha * (1 - alpha_default)
+
             # if max(np.max(alpha) , alpha_0) > 0.99 :
             #     alpha_0 = 0.2
             #     alpha = 0.8 * np.ones(len(alpha)) / len(alpha) 
@@ -359,6 +393,7 @@ def N_conjugate_frank_wolfe(
 
 
             epoch = epoch + 1
+            
             if epoch > cnt_conjugates  :
                 d_list.pop(0)
                 S_list.pop(0)
@@ -385,6 +420,7 @@ def N_conjugate_frank_wolfe(
         primal = model.primal(flows)
         primal_log.append(primal)
         dgap_log.append(primal - max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
         time_log.append(time.time())
 
         if stop_by_crit and dgap_log[-1] <= eps_abs:
@@ -394,7 +430,7 @@ def N_conjugate_frank_wolfe(
     return (
         t,
         flows,
-        (dgap_log, np.array(time_log) - time_log[0] , {'primal' : primal_log}),
+        (dgap_log, np.array(time_log) - time_log[0] , {'primal' : primal_log , 'relative_gap': relative_gap_log}),
         optimal,
     )
 
@@ -422,6 +458,7 @@ def fukushima_frank_wolfe(
     dgap_log = []
     primal_log = []
     time_log = []
+    relative_gap_log = []
 
     times = model.tau(flows)
     flows = model.flows_on_shortest(times)
@@ -430,6 +467,7 @@ def fukushima_frank_wolfe(
     primal = model.primal(flows)
     primal_log.append(primal)
     dgap_log.append(primal - max_dual_func_val)
+    relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
     time_log.append(time.time())
 
     rng = (
@@ -485,6 +523,7 @@ def fukushima_frank_wolfe(
         primal = model.primal(flows)
         primal_log.append(primal)
         dgap_log.append(primal - max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
         time_log.append(time.time())
 
         if stop_by_crit and dgap_log[-1] <= eps_abs:
@@ -494,6 +533,6 @@ def fukushima_frank_wolfe(
     return (
         t,
         flows,
-        (dgap_log, np.array(time_log) - time_log[0] , {'primal' : primal_log}),
+        (dgap_log, np.array(time_log) - time_log[0] , {'primal' : primal_log , 'relative_gap': relative_gap_log}),
         optimal,
     )

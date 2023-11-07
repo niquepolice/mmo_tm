@@ -57,8 +57,8 @@ def init_city(networks_path ,folder ,net_name ,traffic_mat_name ) :
 def run_method(method , name , solver_kwargs , model  ,city_name = '' , max_iter = 100) :
     times, flows, logs, optimal = method(model, **solver_kwargs)
     dgap, time_log, other = logs
-    print(np.sum(flows))
-    experiment_attrs = ({'duality_gap' : np.abs(dgap) , 'time_log' : time_log , 'primal' : other['primal']}  ,  name , max_iter , city_name )
+    # print(np.sum(flows))
+    experiment_attrs = ({'duality_gap' : np.abs(dgap) , 'time_log' : time_log , 'primal' : other['primal'] , 'relative_gap' : np.abs(other['relative_gap'])}  ,  name , max_iter , city_name )
     return experiment_attrs ,other 
 def run_experiment(list_methods , model, city_name , max_iter) :
     experiments = []
@@ -93,9 +93,10 @@ def plot( experiments , name_output_values , time_iters = False, loglog = False 
                 plt.yscale('log')
             else :
                 plt.loglog(iters, values , color =colors[col_id] ,label = name)
+            plt.xscale('log')
             plt.ylabel(name_values, fontsize = 12)
             plt.xlabel('seconds' if time_iters else 'iterations' , fontsize = 12)
-            plt.title('Сходимость ' + name_values +' на городе ' + city_name)
+            plt.title('Сходимость ' + name_values +' на городе ' + city_name + '  (max_iter = '+ str(max_iter) + ')'  )
             plt.legend()
             
             experiment_path = experiments_folder +'iterations/'+ name_values+'_'+ name + '_' + city_name + '_' + str(max_iter) + 'iters_datetime_' + str(date)+'_' + str(time)+ '.csv'

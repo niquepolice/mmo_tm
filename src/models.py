@@ -73,8 +73,15 @@ class TrafficModel(Model, ABC):
         self.correspondences = correspondences
         
         fft, mu, rho, caps = get_graph_props(self.graph)
-        self.is_inf = np.where(np.isinf(mu))
-        self.is_not_inf = ~np.isin(np.arange(len(mu)), self.is_inf)
+        
+        # np.where(np.isinf(mu))
+        self.is_inf = np.where(rho == 0)
+        self.is_not_inf = ~np.isin(np.arange(len(rho)), self.is_inf)
+        
+        self.fft_is_zero = np.where((fft == 0) & (rho != 0))
+        self.fft_is_not_zero =  np.where((fft != 0) & (rho != 0))
+
+
         assert (np.all(rho[self.is_inf] == 0 ))
         # assert (np.all(rho[self.is_not_inf] == 0 ))
     
@@ -162,9 +169,14 @@ class BeckmannModel(TrafficModel):
         dt = np.maximum(0, times - fft)
 
         result = np.empty(len(mu))
+
+        # print( np.sum(caps[self.is_not_inf] <= 0 ) , np.sum(rho[self.is_not_inf] <= 0 ) , np.sum(mu[self.is_not_inf] <= 0) ,np.sum(fft[self.is_not_inf] <= 0) )
+
+
         result[self.is_inf] = 0
-        result[self.is_not_inf] = caps[self.is_not_inf] * (dt[self.is_not_inf] / (fft[self.is_not_inf] * rho[self.is_not_inf])) ** mu[self.is_not_inf] * dt[self.is_not_inf] / (1 + mu[self.is_not_inf])
-        
+        # тут два случая : 1) rho != 0 and fft = 0 2) rho != 0 and fft != 0
+        result[self.fft_is_not_zero] = caps[self.fft_is_not_zero] * (dt[self.fft_is_not_zero] / (fft[self.fft_is_not_zero] * rho[self.fft_is_not_zero])) ** mu[self.fft_is_not_zero] * dt[self.fft_is_not_zero] / (1 + mu[self.fft_is_not_zero])
+        result[self.fft_is_zero] = 0
         return result
 
     def primal(self, flows: np.ndarray) -> float:   
