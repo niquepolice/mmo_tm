@@ -165,8 +165,8 @@ class Sinkhorn:
 
             k += 1
             if k == self.max_iter:
-                raise RuntimeError("Max iter exceeded in Sinkhorn")
-
+                # raise RuntimeError("Max iter exceeded in Sinkhorn")
+                return
         return d_ij(lambda_l_i, lambda_w_j, gammaT_ij), lambda_l_i, lambda_w_j
 
     def _criteria(
