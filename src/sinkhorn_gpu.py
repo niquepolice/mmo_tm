@@ -1,4 +1,6 @@
+import numpy as np
 import torch
+from torch import from_numpy
 from typing import Tuple, Union
 
 
@@ -58,14 +60,23 @@ class SinkhornGPU:
 
     def run(
         self,
-        gammaT_ij: torch.Tensor,
-        lambda_l_i: Union[torch.Tensor, None] = None,
-        lambda_w_j: Union[torch.Tensor, None] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        gammaT_ij: Union[torch.Tensor, np.ndarray],
+        lambda_l_i: Union[torch.Tensor, np.ndarray, None] = None,
+        lambda_w_j: Union[torch.Tensor, np.ndarray, None] = None,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         if lambda_l_i is None:
             lambda_l_i = torch.zeros_like(self.L_i)
         if lambda_w_j is None:
             lambda_w_j = torch.zeros_like(self.W_j)
+
+        if isinstance(gammaT_ij, np.ndarray):
+            gammaT_ij = torch.from_numpy(gammaT_ij)
+
+        if isinstance(lambda_l_i, np.ndarray):
+            lambda_l_i = torch.from_numpy(lambda_l_i)
+
+        if isinstance(lambda_w_j, np.ndarray):
+            lambda_w_j = torch.from_numpy(lambda_w_j)
 
         gammaT_ij = gammaT_ij.to(self.device)
         lambda_l_i = lambda_l_i.to(self.device)
@@ -85,7 +96,11 @@ class SinkhornGPU:
             if k == self.max_iter:
                 # raise RuntimeError("Max iter exceeded in SinkhornGPU")
                 return
-        return self.d_ij(lambda_l_i, lambda_w_j, gammaT_ij), lambda_l_i, lambda_w_j
+        return (
+            self.d_ij(lambda_l_i, lambda_w_j, gammaT_ij).detach().cpu().numpy(),
+            lambda_l_i.detach().cpu().numpy(),
+            lambda_w_j.detach().cpu().numpy(),
+        )
 
     def _criteria(
         self,
