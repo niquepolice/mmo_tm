@@ -4,7 +4,23 @@ from torch import from_numpy
 from typing import Tuple, Union
 
 
-class SinkhornGPU:
+def d_ij(
+    lambda_l_i: torch.Tensor, lambda_w_j: torch.Tensor, gammaT_ij: torch.Tensor
+) -> torch.Tensor:
+
+    if isinstance(gammaT_ij, np.ndarray):
+        gammaT_ij = torch.from_numpy(gammaT_ij)
+
+    if isinstance(lambda_l_i, np.ndarray):
+        lambda_l_i = torch.from_numpy(lambda_l_i)
+
+    if isinstance(lambda_w_j, np.ndarray):
+        lambda_w_j = torch.from_numpy(lambda_w_j)
+
+    return Sinkhorn.d_ij(lambda_l_i, lambda_w_j, gammaT_ij).detach().cpu().numpy()
+
+
+class Sinkhorn:
     def __init__(
         self,
         departures: torch.Tensor,
@@ -14,6 +30,12 @@ class SinkhornGPU:
         crit_check_period=10,
         device="cuda",
     ):
+
+        if isinstance(departures, np.ndarray):
+            departures = torch.from_numpy(departures)
+        if isinstance(arrivals, np.ndarray):
+            arrivals = torch.from_numpy(arrivals)
+
         self.L_i = departures.to(device)
         self.W_j = arrivals.to(device)
         self.n_types = self.L_i.shape[0]
@@ -94,8 +116,7 @@ class SinkhornGPU:
 
             k += 1
             if k == self.max_iter:
-                # raise RuntimeError("Max iter exceeded in SinkhornGPU")
-                return
+                raise RuntimeError("Max iter exceeded in SinkhornGPU")
         return (
             self.d_ij(lambda_l_i, lambda_w_j, gammaT_ij).detach().cpu().numpy(),
             lambda_l_i.detach().cpu().numpy(),

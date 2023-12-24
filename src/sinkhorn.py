@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 import numba
 import numpy as np
@@ -6,7 +6,6 @@ from numba import njit
 from scipy.special import logsumexp
 
 np.set_printoptions(suppress=True)
-eps = 1e-6
 
 
 def d_ij(
@@ -54,9 +53,9 @@ class Sinkhorn:
         departures: np.ndarray,
         arrivals: np.ndarray,
         max_iter: int,
-        eps=1e-6,
-        crit_check_period=10,
-        use_numba=False,
+        eps: float = 1e-6,
+        crit_check_period: int = 10,
+        use_numba: Optional[bool]=None,
     ):
         """
         :param departures: nonzero departures[zone_ind] for current demand layer
@@ -71,6 +70,9 @@ class Sinkhorn:
         self.max_iter = max_iter
         self.eps = eps
         self.crit_check_period = crit_check_period
+        if use_numba is None:
+            use_numba=len(departures) > 100
+
         self.use_numba = use_numba
 
     def _sinkhorn_iteration(
@@ -165,8 +167,7 @@ class Sinkhorn:
 
             k += 1
             if k == self.max_iter:
-                # raise RuntimeError("Max iter exceeded in Sinkhorn")
-                return
+                raise RuntimeError("Max iter exceeded in Sinkhorn")
         return d_ij(lambda_l_i, lambda_w_j, gammaT_ij), lambda_l_i, lambda_w_j
 
     def _criteria(
