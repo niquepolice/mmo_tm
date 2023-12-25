@@ -15,7 +15,7 @@ from src.shortest_paths_gt import (
     get_graph_props,
     distance_mat_gt,
 )
-from src.sinkhorn import Sinkhorn
+# import src.sinkhorn_gpu as sinkhorn
 import src.sinkhorn as sinkhorn
 
 
@@ -218,11 +218,10 @@ class TwostageModel(Model):
         self.departures = departures
         self.arrivals = arrivals
         self.gamma = gamma
-        self.sinkhorn = Sinkhorn(
+        self.sinkhorn = sinkhorn.Sinkhorn(
             self.departures,
             self.arrivals,
             max_iter=int(1e5),
-            use_numba=len(departures) > 100,
         )
 
         # previous solution to reuse as starting point
