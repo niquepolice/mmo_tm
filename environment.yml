@@ -9,6 +9,7 @@ dependencies:
   - tqdm
   - cvxpy
   - matplotlib
+  - networkx
   - ipykernel
   - pip
   - pip:

@@ -47,6 +47,6 @@ Docker image  might be created on demand to simplify the installation process. W
 # TODO
 - [ ] Remove sources/targets with zero arrivals or departures before applying sinkhorn algorithm
 - [ ] Add experiments for the twostage model with stable dynamics, clean up the ipynb
-- [ ] Add requirements.txt or docker
 - [ ] Add all necessary `solve_cvxpy` implementations
 - [ ] Cover with tests
+- [x] Add requirements.txt or docker
