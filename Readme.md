@@ -43,6 +43,8 @@ Docker image  might be created on demand to simplify the installation process. W
 5. Strong results should be included in this repo if it does not require overcomplicating the base architecture
 
 # Recognized forks
+[SemyonSemenov](https://github.com/SemyonSemenov/mmo_tm) Sinkhorn GPU (pytorch) implemetation and experiments \[implementation merged\]
+
 
 # TODO
 - [ ] Remove sources/targets with zero arrivals or departures before applying sinkhorn algorithm
