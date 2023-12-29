@@ -40,10 +40,6 @@ def frank_wolfe(
         flows = model.flows_on_shortest(times)
 
         # dgap_log.append(times @ (flows_averaged - flows))  # FW gap
-        flows_averaged = (
-            flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
-        )
-
         dual_val = model.dual(times, flows)
         max_dual_func_val = max(max_dual_func_val, dual_val)
 
@@ -55,6 +51,10 @@ def frank_wolfe(
         if stop_by_crit and dgap_log[-1] <= eps_abs:
             optimal = True
             break
+
+        flows_averaged = (
+            flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
+        )
 
     return (
         times,

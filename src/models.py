@@ -218,11 +218,6 @@ class TwostageModel(Model):
         self.departures = departures
         self.arrivals = arrivals
         self.gamma = gamma
-        self.sinkhorn = sinkhorn.Sinkhorn(
-            self.departures,
-            self.arrivals,
-            max_iter=int(1e5),
-        )
 
         # previous solution to reuse as starting point
         # save it here, because entropy model is hidden from solver-side in case of USTM
@@ -231,7 +226,13 @@ class TwostageModel(Model):
     def solve_entropy_model(
         self, distance_mat
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        traffic_mat, self.lambda_l_prev, self.lambda_w_prev = self.sinkhorn.run(
+        """Calls sinkhorn to solve linear-entropy problem. Saves previous solution to reuse as starting point"""
+        snkh = sinkhorn.Sinkhorn(
+            self.departures,
+            self.arrivals,
+            max_iter=int(1e5),
+        )
+        traffic_mat, self.lambda_l_prev, self.lambda_w_prev = snkh.run(
             self.gamma * distance_mat, self.lambda_l_prev, self.lambda_w_prev
         )
         return traffic_mat, self.lambda_l_prev, self.lambda_w_prev

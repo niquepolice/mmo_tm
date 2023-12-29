@@ -32,6 +32,20 @@ def solve_min_cost_concurrent_flow(
     costs, potentials, nonneg_duals = [cons.dual_value for cons in prob.constraints]
     return flows, costs, potentials, nonneg_duals
 
+def solve_entropy_model_cp(
+    departures: np.ndarray, arrivals: np.ndarray, distance_mat: np.ndarray, gamma: float
+) -> np.ndarray:
+    gammaT_ij = distance_mat * gamma
+    d_ij = cp.Variable(shape=distance_mat.shape)
+
+    obj = cp.Minimize(cp.sum(cp.multiply(gammaT_ij, d_ij)) - cp.sum(cp.entr(d_ij)))
+
+    constraints = [cp.sum(d_ij, axis=1) == departures, cp.sum(d_ij, axis=0) == arrivals]
+
+    prob = cp.Problem(obj, constraints)
+    prob.solve()
+
+    return d_ij.value
 
 def get_max_traffic_mat_mul(
     graph: nx.Graph, traffic_mat: np.ndarray, **solver_kwargs
