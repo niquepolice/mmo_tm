@@ -47,6 +47,50 @@ def solve_entropy_model_cp(
 
     return d_ij.value
 
+def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph) -> np.ndarray:
+    # TODO: test on networks where can_pass_through_zones=False
+
+    traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
+    incidence_mat = nx.incidence_matrix(graph, oriented=True).todense()
+
+    capacities = np.array(
+        list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32
+    )
+    ffts = np.array(
+        list(nx.get_edge_attributes(graph, "free_flow_times").values()),
+        dtype=np.float32,
+    )
+    rhos = np.array(list(nx.get_edge_attributes(graph, "rho").values()), dtype=np.float32)
+    mus = np.array(list(nx.get_edge_attributes(graph, "mu").values()), dtype=np.float32)
+
+    flows_ei = cp.Variable((len(graph.edges), traffic_mat.shape[0]))
+    flows_e = cp.sum(flows_ei, axis=1)
+    sigmas = ffts * flows_e * (1 + (rhos / (1 + 1 / mus)) * (flows_e / capacities) ** (1 / mus))
+    objective = cp.Minimize(cp.sum(sigmas))
+
+    prob = cp.Problem(
+        objective,
+        [
+            (incidence_mat @ flows_ei).T == -traffic_lapl,
+            flows_ei >= 0,
+        ],
+    )
+    prob.solve()
+    flows_ei = flows_ei.value if flows_ei is not None else None
+    costs, potentials, nonneg_duals = [cons.dual_value for cons in prob.constraints]
+    return flows_ei, costs, potentials, nonneg_duals
+
+
+# TODO: combine in single method (??) to reuse compiled problem by using parameters
+def admm_argmin_flows(traffic_mat: np.ndarray, nx_graph: nx.DiGraph) -> np.ndarray:
+    incidence_mat = nx.incidence_matrix(nx_graph, oriented=True).todense()
+    traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
+    pass
+
+def admm_argmin_traffic(nx_graph: nx.DiGraph, flows: np.ndarray) -> np.ndarray:
+    incidence_mat = nx.incidence_matrix(nx_graph, oriented=True).todense()
+    pass
+
 def get_max_traffic_mat_mul(
     graph: nx.Graph, traffic_mat: np.ndarray, **solver_kwargs
 ) -> Optional[float]:
@@ -54,7 +98,7 @@ def get_max_traffic_mat_mul(
     traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
     incidence_mat = nx.incidence_matrix(graph, oriented=True).todense()
 
-    bandwidth = np.array(
+    capacities = np.array(
         list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32
     )
 
@@ -63,7 +107,7 @@ def get_max_traffic_mat_mul(
     prob = cp.Problem(
         cp.Maximize(gamma),
         [
-            cp.sum(flow, axis=1) <= bandwidth,
+            cp.sum(flow, axis=1) <= capacities,
             (incidence_mat @ flow).T == -gamma * traffic_lapl,
             flow >= 0,
         ],
