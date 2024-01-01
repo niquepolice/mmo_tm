@@ -6,7 +6,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 
 from src.commons import Correspondences
-from src.cvxpy_solvers import solve_min_cost_concurrent_flow
+from src.cvxpy_solvers import solve_min_cost_concurrent_flow, solve_beckmann_model_cp
 from src.newton import newton
 
 from src.shortest_paths_gt import (
@@ -59,7 +59,7 @@ class Model(ABC):
 
     @abstractmethod
     def func_psigrad_primal(self, times) -> tuple[float, np.ndarray, np.ndarray]:
-        """Returns minus dual func value, gradient of \Psi (non-composite term),
+        """Returns minus dual func value, gradient of Psi (non-composite term),
         and corresponding primal variable value
            Needed for USTM
         """
@@ -161,13 +161,14 @@ class BeckmannModel(TrafficModel):
 
         return fft * (rho * x + 1)
 
-    def solve_cvxpy(self, **solver_kwargs):
+    def solve_cvxpy(self, **solver_kwargs) -> np.ndarray:
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
-        # TODO: implement
-        return None
-        # flows_ie, costs, potentials, nonneg_duals = solve_beckmann(self.nx_graph, self.correspondences.traffic_mat,
-        #                                                            **solver_kwargs)
-        # return flows_ie, costs, potentials, nonneg_duals
+        flows_ei, potentials = solve_beckmann_model_cp(
+            self.correspondences.traffic_mat, self.nx_graph, **solver_kwargs
+        )
+        assert flows_ei is not None
+
+        return flows_ei.sum(axis=1)
 
 
 class SDModel(TrafficModel):
@@ -195,11 +196,11 @@ class SDModel(TrafficModel):
     def solve_cvxpy(self, **solver_kwargs):
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
 
-        flows_ie, costs, potentials, nonneg_duals = solve_min_cost_concurrent_flow(
+        flows_ei, costs, potentials, nonneg_duals = solve_min_cost_concurrent_flow(
             self.nx_graph, self.correspondences.node_traffic_mat, **solver_kwargs
         )
         return (
-            flows_ie.sum(axis=0),
+            flows_ei.sum(axis=1),
             self.graph.ep.free_flow_times.a + costs,
             potentials,
             nonneg_duals,

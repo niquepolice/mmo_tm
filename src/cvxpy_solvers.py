@@ -18,19 +18,19 @@ def solve_min_cost_concurrent_flow(
         dtype=np.float32,
     )
 
-    flows = cp.Variable((len(graph.edges), traffic_mat.shape[0]))
+    flows_ei = cp.Variable((len(graph.edges), traffic_mat.shape[0]))
     prob = cp.Problem(
-        cp.Minimize(cp.sum(flows, axis=1) @ costs),
+        cp.Minimize(cp.sum(flows_ei, axis=1) @ costs),
         [
-            cp.sum(flows, axis=1) <= capacities,
-            (incidence_mat @ flows).T == -traffic_lapl,
-            flows >= 0,
+            cp.sum(flows_ei, axis=1) <= capacities,
+            (incidence_mat @ flows_ei).T == -traffic_lapl,
+            flows_ei >= 0,
         ],
     )
     prob.solve(**solver_kwargs)
-    flows = flows.value if flows is not None else None
+    flows_ei = flows_ei.value if flows_ei is not None else None
     costs, potentials, nonneg_duals = [cons.dual_value for cons in prob.constraints]
-    return flows, costs, potentials, nonneg_duals
+    return flows_ei, costs, potentials, nonneg_duals
 
 def solve_entropy_model_cp(
     departures: np.ndarray, arrivals: np.ndarray, distance_mat: np.ndarray, gamma: float
@@ -47,7 +47,7 @@ def solve_entropy_model_cp(
 
     return d_ij.value
 
-def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph) -> np.ndarray:
+def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver_kwargs) -> tuple:
     # TODO: test on networks where can_pass_through_zones=False
 
     traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
@@ -63,22 +63,33 @@ def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph) -> np.nd
     rhos = np.array(list(nx.get_edge_attributes(graph, "rho").values()), dtype=np.float32)
     mus = np.array(list(nx.get_edge_attributes(graph, "mu").values()), dtype=np.float32)
 
-    flows_ei = cp.Variable((len(graph.edges), traffic_mat.shape[0]))
+    flows_ei = cp.Variable((len(graph.edges), traffic_mat.shape[0]), nonneg=True)
     flows_e = cp.sum(flows_ei, axis=1)
-    sigmas = ffts * flows_e * (1 + (rhos / (1 + 1 / mus)) * (flows_e / capacities) ** (1 / mus))
+    # flows_e = cp.Variable(len(graph.edges), nonneg=True)
+
+    # in cvxpy, power should be scalar, so use loop
+    sigmas = [
+        ffts[e]
+        * (
+            flows_e[e]
+            + (rhos[e] / (1 + 1 / mus[e]))
+            * (cp.pos(flows_e[e]) ** (1 + 1 / mus[e]) / capacities[e] ** (1 / mus[e]))
+        )
+        for e in range(len(graph.edges))
+    ]
     objective = cp.Minimize(cp.sum(sigmas))
+    # objective = cp.Minimize(0)
 
     prob = cp.Problem(
         objective,
         [
             (incidence_mat @ flows_ei).T == -traffic_lapl,
-            flows_ei >= 0,
         ],
     )
-    prob.solve()
+    prob.solve(**solver_kwargs)
     flows_ei = flows_ei.value if flows_ei is not None else None
-    costs, potentials, nonneg_duals = [cons.dual_value for cons in prob.constraints]
-    return flows_ei, costs, potentials, nonneg_duals
+    potentials = [cons.dual_value for cons in prob.constraints]
+    return flows_ei, potentials
 
 
 # TODO: combine in single method (??) to reuse compiled problem by using parameters
