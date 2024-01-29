@@ -334,6 +334,7 @@ def N_conjugate_frank_wolfe(
     for k in rng:
         
         if gamma > 0.99999 :
+        # if gamma < 0.0001:
             epoch = 0
             S_list = []
             d_list = []
@@ -368,11 +369,11 @@ def N_conjugate_frank_wolfe(
             alpha_0 = 1/(1+betta_sum)
             alpha = np.array(betta)[1:] * alpha_0
 
-            alpha_default = 0.01
-            if alpha_0 < alpha_default :
-                alpha_0 = alpha_default
-                alpha = alpha  / np.sum(alpha)
-                alpha = alpha * (1 - alpha_default)
+            # alpha_default = 0.01
+            # if alpha_0 < alpha_default :
+            #     alpha_0 = alpha_default
+            #     alpha = alpha  / np.sum(alpha)
+            #     alpha = alpha * (1 - alpha_default)
 
             # if max(np.max(alpha) , alpha_0) > 0.99 :
             #     alpha_0 = 0.2
@@ -487,7 +488,8 @@ def fukushima_frank_wolfe(
 
         # Непрерывный случай
         if weight_parameter != 0 :
-            Q = Q*(1-weight_parameter)+sk_FW*weight_parameter    
+            if k != 1 :
+                Q = Q*(1-weight_parameter)+sk_FW*weight_parameter    
             dk = Q-flows
         else :    #Дисретный случай
             if len(sk_FW_list) < cnt_directional :    

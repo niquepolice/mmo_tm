@@ -7,13 +7,13 @@ from src.my_algs import conjugate_frank_wolfe , Bi_conjugate_frank_wolfe , N_con
 networks_path = Path("./TransportationNetworks")
 
 
-# folder = "SiouxFalls"
-# net_name = "SiouxFalls_net"
-# traffic_mat_name = "SiouxFalls_trips"
+folder = "SiouxFalls"
+net_name = "SiouxFalls_net"
+traffic_mat_name = "SiouxFalls_trips"
 
-folder = "Anaheim"
-net_name = "Anaheim_net"
-traffic_mat_name = "Anaheim_trips"
+# folder = "Anaheim"
+# net_name = "Anaheim_net"
+# traffic_mat_name = "Anaheim_trips"
     
 # Не работает (mu != inf , но rho = 0) (sigma * = ... / rho ...) 
 # folder = "Philadelphia"
@@ -89,6 +89,11 @@ traffic_mat_name = "Anaheim_trips"
 ## LOAD CITY 
 beckmann_model , city_info = test.init_city(networks_path=networks_path ,folder=folder ,net_name=net_name,traffic_mat_name=traffic_mat_name)
 eps_abs = city_info['eps_abs']
+# print(type(print(beckmann_model.correspondences)))
+# print(beckmann_model.correspondences.traffic_mat.shape)
+# print(beckmann_model.correspondences.node_traffic_mat.shape)
+# print(beckmann_model.correspondences.sources.shape)
+# print(beckmann_model.correspondences.targets.shape)
 
 # from collections import Counter
 
@@ -102,16 +107,16 @@ eps_abs = city_info['eps_abs']
 
 
 # ##EXPERIMENTS RUN
-max_iter = 100
+max_iter = 1000
 list_methods = []
 
 ## FUKUSHIMA FW
 
-weight_param = [0.15]
+weight_param = [0.1]
 for weight in weight_param :
     list_methods.append((fukushima_frank_wolfe ,'fukushima_frank_wolfe linesearch weighted =' + str(weight) , 
         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'weight_parameter' : weight  } ))
-# cnts = [5]
+# cnts = [4,5,6]
 # for cnt in cnts :
 #     list_methods.append((fukushima_frank_wolfe ,'fukushima_frank_wolfe linesearch N =' + str(cnt) , 
 #         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'cnt_directional' : cnt  } ))
@@ -132,8 +137,8 @@ list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' ,
 # list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe' , 
 #     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
 # # ## FWM
-# list_methods.append((frank_wolfe ,'frank_wolfe' , 
-#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
+list_methods.append((frank_wolfe ,'frank_wolfe' , 
+    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
 # # # ## FWM linesearch
 list_methods.append((frank_wolfe ,'frank_wolfe linesearch' , 
     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False ,'linesearch':True}  ))
