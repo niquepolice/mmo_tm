@@ -82,6 +82,158 @@ def frank_wolfe(
     )
 
 
+## Моя реализция NFW 
+def N_conjugate_frank_wolfe(
+    model: BeckmannModel,
+    eps_abs: float,
+    max_iter: int = 100,  # 0 for no limit (some big number)
+    times_start: Optional[np.ndarray] = None,
+    stop_by_crit: bool = True,
+    use_tqdm: bool = True,
+    linesearch : bool = False ,
+    cnt_conjugates : int = 3
+) -> tuple:
+    """One iteration == 1 shortest paths call"""
+
+    optimal = False
+
+    # init flows, not used in averaging
+    if times_start is None:
+        times_start = model.graph.ep.free_flow_times.a.copy()
+    flows = model.flows_on_shortest(times_start)
+
+    max_dual_func_val = -np.inf
+    dgap_log = []
+    time_log = []
+    primal_log = []
+    relative_gap_log = []
+
+    times = model.tau(flows)
+    flows = model.flows_on_shortest(times)
+    dual_val = model.dual(times, flows)
+    max_dual_func_val = max(max_dual_func_val, dual_val)
+    primal = model.primal(flows)
+    primal_log.append(primal)
+    dgap_log.append(primal - max_dual_func_val)
+    relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
+    time_log.append(time.time())
+
+    rng = (
+        range(1,1_000_000)
+        if max_iter == 0
+        else tqdm(range(1,max_iter), disable=not use_tqdm)
+    )
+
+    gamma = 1.0
+    d_list = []
+    S_list = []
+    gamma_list = []
+    gamma = 1
+    epoch = 0
+    for k in rng:
+        
+        if gamma > 0.99999 :
+        # if gamma < 0.0001:
+            epoch = 0
+            S_list = []
+            d_list = []
+        if k == 1  or epoch == 0:
+            epoch  = epoch + 1
+            t = model.tau(flows)
+            sk_FW = model.flows_on_shortest(t)    
+            dk = sk_FW - flows
+            S_list.append(sk_FW)
+            d_list.append(dk)
+        else :
+            t = model.tau(flows)
+            sk_FW = model.flows_on_shortest(t)
+            dk_FW = sk_FW - flows
+            hessian = model.diff_tau(flows)
+            
+            B = np.sum(d_list*hessian*d_list    , axis=1)
+            A = np.sum(d_list*hessian*dk_FW     , axis=1)    
+            N = len(B)
+            betta = [-1]*(N+1)
+            betta_sum = 0
+            delta = 0.0001
+            for m in range(N,0,-1) :
+                betta[m] = -A[-m]/(B[-m]*(1- gamma_list[-m])) + betta_sum*gamma_list[-m]/(1-gamma_list[-m]) 
+                if betta[m] < 0 :
+                    betta[m] = 0
+                # elif betta[m] > 1- delta :
+                #     betta[m] = 1 - delta 
+                #     betta_sum = betta_sum + 1 - delta
+                else :
+                    betta_sum = betta_sum + betta[m]
+            alpha_0 = 1/(1+betta_sum)
+            alpha = np.array(betta)[1:] * alpha_0
+
+            # alpha_default = 0.01
+            # if alpha_0 < alpha_default :
+            #     alpha_0 = alpha_default
+            #     alpha = alpha  / np.sum(alpha)
+            #     alpha = alpha * (1 - alpha_default)
+
+            # if max(np.max(alpha) , alpha_0) > 0.99 :
+            #     alpha_0 = 0.2
+            #     alpha = 0.8 * np.ones(len(alpha)) / len(alpha) 
+            
+            
+            alpha = alpha[::-1]
+            
+            # print('-----------------ITER:' , k , '--- directions =' , [np.sum(sk_FW)]+list(np.sum(S_list,axis=1)) )
+            # print('-----------------ITER:',k,'--- alpha =' , [alpha_0 ]+ list(alpha[::-1]) )
+            
+            sk = alpha_0*sk_FW + np.sum(alpha*np.array(S_list).T , axis=1)
+            dk = sk - flows
+
+            # print('CHECK CONJUGATE :' , len(d_list)  , 'alpha:' , alpha  , 'alpha_0: ' , alpha_0 , 'list_conjugates: ' , np.sum(dk*hessian*d_list , axis=1))
+            d_list.append(dk)
+            S_list.append(sk)
+
+
+            epoch = epoch + 1
+            
+            if epoch > cnt_conjugates  :
+                d_list.pop(0)
+                S_list.pop(0)
+                gamma_list.pop(0)
+
+
+        if linesearch :
+            res = minimize_scalar( lambda y : model.primal(flows + y*dk ) , bounds = (0.0,1.0) , tol = 1e-12 )
+            gamma = res.x
+        else :
+            gamma = 2.0/(k + 2)
+        
+        gamma_list.append(gamma)
+
+
+        dual_val = model.dual(t, sk_FW)
+        max_dual_func_val = max(max_dual_func_val, dual_val)
+        
+        
+        flows = flows + gamma*dk
+
+
+        # equal to FW gap if dual_val == max_dual_func_val
+        primal = model.primal(flows)
+        primal_log.append(primal)
+        dgap_log.append(primal - max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val)/max_dual_func_val)
+        time_log.append(time.time())
+
+        if stop_by_crit and dgap_log[-1] <= eps_abs:
+            optimal = True
+            break
+
+    return (
+        t,
+        flows,
+        (dgap_log, np.array(time_log) - time_log[0] , {'primal' : primal_log , 'relative_gap': relative_gap_log}),
+        optimal,
+    )
+
 def ustm(
     model: Model,
     eps_abs: float,

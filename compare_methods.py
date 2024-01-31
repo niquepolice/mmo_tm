@@ -1,8 +1,8 @@
 import src.test as test
 from pathlib import Path
 from src.algs import subgd, ustm, frank_wolfe, cyclic
-from src.my_algs import conjugate_frank_wolfe , Bi_conjugate_frank_wolfe , N_conjugate_frank_wolfe ,fukushima_frank_wolfe
-
+# from src.my_algs import conjugate_frank_wolfe , Bi_conjugate_frank_wolfe , N_conjugate_frank_wolfe ,fukushima_frank_wolfe
+from src.algs import N_conjugate_frank_wolfe 
 
 networks_path = Path("./TransportationNetworks")
 
@@ -112,10 +112,10 @@ list_methods = []
 
 ## FUKUSHIMA FW
 
-weight_param = [0.1]
-for weight in weight_param :
-    list_methods.append((fukushima_frank_wolfe ,'fukushima_frank_wolfe linesearch weighted =' + str(weight) , 
-        {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'weight_parameter' : weight  } ))
+# weight_param = [0.1]
+# for weight in weight_param :
+#     list_methods.append((fukushima_frank_wolfe ,'fukushima_frank_wolfe linesearch weighted =' + str(weight) , 
+#         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'weight_parameter' : weight  } ))
 # cnts = [4,5,6]
 # for cnt in cnts :
 #     list_methods.append((fukushima_frank_wolfe ,'fukushima_frank_wolfe linesearch N =' + str(cnt) , 
@@ -128,11 +128,11 @@ for cnt in cnts :
         {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  , 'cnt_conjugates' : cnt  } ))
 
 # ##BCFW linesearch
-list_methods.append((Bi_conjugate_frank_wolfe ,'Bi_conjugate_frank_wolfe linesearch' , 
-    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
+# list_methods.append((Bi_conjugate_frank_wolfe ,'Bi_conjugate_frank_wolfe linesearch' , 
+#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True } ))
 # # ##CFWM linesearch
-list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
-    {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  ,'alpha_default' : 0.6} ))
+# list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe linesearch' , 
+#     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False , 'linesearch': True  ,'alpha_default' : 0.6} ))
 # # ##CFWM 
 # list_methods.append((conjugate_frank_wolfe ,'conjugate_frank_wolfe' , 
 #     {'eps_abs' : eps_abs , 'max_iter':max_iter , 'stop_by_crit': False} ))
@@ -159,5 +159,5 @@ list_methods.append((frank_wolfe ,'frank_wolfe linesearch' ,
 experiments = test.run_experiment(list_methods , model=beckmann_model, city_name=folder , max_iter=max_iter)
 
 # #DISPLAY RESULTS
-test.plot( experiments , name_output_values=['relative_gap'] , save=True  ,time_iters=True)
+test.plot( experiments , name_output_values=['relative_gap'] , save=False  ,time_iters=True)
 
