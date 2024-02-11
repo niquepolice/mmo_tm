@@ -71,7 +71,15 @@ class TrafficModel(Model, ABC):
         self.nx_graph = nx_graph
         self.graph = get_graphtool_graph(nx_graph)
         self.correspondences = correspondences
-
+        
+        fft, mu, rho, caps = get_graph_props(self.graph)
+        
+        mu_mask = mu == np.inf
+        rho_mask = rho == 0
+        fft_mask = fft == 0
+        # the degenerate case : cost does not idepend on the flow
+        self.all_cases = mu_mask + rho_mask + fft_mask 
+    
     def flows_on_shortest(
         self, times: np.ndarray, return_distance_mat: bool = False
     ) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
@@ -119,27 +127,53 @@ class BeckmannModel(TrafficModel):
 
     def tau(self, flows):
         fft, mu, rho, caps = get_graph_props(self.graph)
+        
+        result = np.empty(len(mu))
+        result[self.all_cases] = fft[self.all_cases]*(1 + rho[self.all_cases])
+        result[~self.all_cases] = fft[~self.all_cases] * (1 + rho[~self.all_cases] * (flows[~self.all_cases] / caps[~self.all_cases]) ** (1 / mu[~self.all_cases]))
+        return result
 
-        return fft * (1 + rho * (flows / caps) ** (1 / mu))
+    def diff_tau(self, flows):
+        fft, mu, rho, caps = get_graph_props(self.graph)
+        
+        result = np.empty(len(mu))
+         
+        result[self.all_cases] = 0
+        result[~self.all_cases] = (1.0 / mu[~self.all_cases]) * fft[~self.all_cases] * rho[~self.all_cases] * np.power(flows[~self.all_cases] , (1.0 / mu[~self.all_cases]) - 1.0 ) / np.power(caps[~self.all_cases], 1.0 / mu[~self.all_cases])
+        return result
 
     def tau_inv(self, times):
         fft, mu, rho, caps = get_graph_props(self.graph)
-
-        return caps * ((times / fft - 1) / rho) ** mu
+        result = np.empty(len(mu))
+        
+        result[self.all_cases] = 0
+        result[~self.all_cases] = caps[~self.all_cases] * ((times[~self.all_cases] / fft[~self.all_cases] - 1) / rho[~self.all_cases]) ** mu[~self.all_cases]
+        return result
 
     def sigma(self, flows) -> np.ndarray:
-        fft, mu, rho, caps = get_graph_props(self.graph)
 
-        return fft * flows * (1 + (rho / (1 + 1 / mu)) * (flows / caps) ** (1 / mu))
+        fft, mu, rho, caps = get_graph_props(self.graph)
+        result = np.empty(len(mu))
+
+        result[self.all_cases] = fft[self.all_cases]*flows[self.all_cases]*(1 + rho[self.all_cases]) 
+        result[~self.all_cases] = fft[~self.all_cases] * flows[~self.all_cases] * (1 + (rho[~self.all_cases] / (1 + 1 / mu[~self.all_cases])) * (flows[~self.all_cases] / caps[~self.all_cases]) ** (1 / mu[~self.all_cases]))
+        return result
+
 
     def sigma_star(self, times) -> np.ndarray:
         fft, mu, rho, caps = get_graph_props(self.graph)
 
         dt = np.maximum(0, times - fft)
 
-        return caps * (dt / (fft * rho)) ** mu * dt / (1 + mu)
+        result = np.empty(len(mu))
 
-    def primal(self, flows: np.ndarray) -> float:
+        # print( np.sum(caps[self.is_not_inf] <= 0 ) , np.sum(rho[self.is_not_inf] <= 0 ) , np.sum(mu[self.is_not_inf] <= 0) ,np.sum(fft[self.is_not_inf] <= 0) )
+
+        result[self.all_cases] = 0
+        result[~self.all_cases] = caps[~self.all_cases] * (dt[~self.all_cases] / (fft[~self.all_cases] * rho[~self.all_cases])) ** mu[~self.all_cases] * dt[~self.all_cases] / (1 + mu[~self.all_cases])
+        return result
+
+    def primal(self, flows: np.ndarray) -> float:   
         return self.sigma(flows).sum()
 
     def composite(self, times: np.ndarray) -> float:
@@ -154,12 +188,17 @@ class BeckmannModel(TrafficModel):
         fft, mu, rho, caps = get_graph_props(self.graph)
 
         # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
-        x_0 = (times - fft) / (fft * rho)
-        a = stepsize * caps / (fft * rho)
+
+        mask = ~self.all_cases  # non-degenerated edges
+        x_0 = (times - fft)[mask] / (fft * rho)[mask]
+        a = stepsize * caps[mask] / (fft * rho)[mask]
 
         x = newton(x_0_arr=x_0, a_arr=a, mu_arr=mu)
 
-        return fft * (rho * x + 1)
+        result = fft.copy()
+        result[mask] = fft[mask] * (rho[mask] * x + 1)
+
+        return result
 
     def solve_cvxpy(self, **solver_kwargs):
         """solver_kwargs: arguments for cvxpy's problem.solve()"""

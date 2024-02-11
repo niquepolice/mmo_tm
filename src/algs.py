@@ -3,7 +3,7 @@ from typing import Optional
 import numpy as np
 import time
 from tqdm import tqdm
-
+from scipy.optimize import minimize_scalar
 from src.models import TrafficModel, BeckmannModel, TwostageModel, Model
 
 
@@ -14,6 +14,7 @@ def frank_wolfe(
     times_start: Optional[np.ndarray] = None,
     stop_by_crit: bool = True,
     use_tqdm: bool = True,
+    linesearch: bool = False,
 ) -> tuple:
     """One iteration == 1 shortest paths call"""
 
@@ -27,19 +28,31 @@ def frank_wolfe(
     max_dual_func_val = -np.inf
     dgap_log = []
     time_log = []
+    relative_gap_log = []
+    primal_log = []
 
     rng = (
         range(1_000_000)
         if max_iter == 0
         else tqdm(range(max_iter), disable=not use_tqdm)
     )
+    # steps = []
     for k in rng:
-        stepsize = 2 / (k + 2)
 
         times = model.tau(flows_averaged)
         flows = model.flows_on_shortest(times)
 
-        # dgap_log.append(times @ (flows_averaged - flows))  # FW gap
+        if linesearch:
+            res = minimize_scalar(
+                lambda y: model.primal(flows_averaged * (1 - y) + y * flows),
+                bounds=(0.0, 1.0),
+                options={"xatol": 1e-12},
+            )
+            stepsize = res.x
+            # print(gamma)
+        else:
+            stepsize = 2.0 / (k + 2)
+
         flows_averaged = (
             flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
         )
@@ -47,9 +60,10 @@ def frank_wolfe(
         dual_val = model.dual(times, flows)
         max_dual_func_val = max(max_dual_func_val, dual_val)
 
-        # equal to FW gap if dual_val == max_dual_func_val
         primal = model.primal(flows_averaged)
+        primal_log.append(primal)
         dgap_log.append(primal - max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val) / max_dual_func_val)
         time_log.append(time.time())
 
         if stop_by_crit and dgap_log[-1] <= eps_abs:
@@ -59,7 +73,147 @@ def frank_wolfe(
     return (
         times,
         flows_averaged,
-        (dgap_log, np.array(time_log) - time_log[0]),
+        (
+            dgap_log,
+            np.array(time_log) - time_log[0],
+            {"primal": primal_log, "relative_gap": relative_gap_log},
+        ),
+        optimal,
+    )
+
+
+def N_conjugate_frank_wolfe(
+    model: BeckmannModel,
+    eps_abs: float,
+    max_iter: int = 100,  # 0 for no limit (some big number)
+    times_start: Optional[np.ndarray] = None,
+    stop_by_crit: bool = True,
+    use_tqdm: bool = True,
+    linesearch: bool = False,
+    cnt_conjugates: int = 3,
+) -> tuple:
+    """One iteration == 1 shortest paths call"""
+
+    optimal = False
+
+    # init flows, not used in averaging
+    if times_start is None:
+        times_start = model.graph.ep.free_flow_times.a.copy()
+    flows = model.flows_on_shortest(times_start)
+
+    max_dual_func_val = -np.inf
+    dgap_log = []
+    time_log = []
+    primal_log = []
+    relative_gap_log = []
+
+    times = model.tau(flows)
+    flows = model.flows_on_shortest(times)
+    dual_val = model.dual(times, flows)
+    max_dual_func_val = max(max_dual_func_val, dual_val)
+    primal = model.primal(flows)
+    primal_log.append(primal)
+    dgap_log.append(primal - max_dual_func_val)
+    relative_gap_log.append((primal - max_dual_func_val) / max_dual_func_val)
+    time_log.append(time.time())
+
+    rng = (
+        range(1, 1_000_000)
+        if max_iter == 0
+        else tqdm(range(1, max_iter), disable=not use_tqdm)
+    )
+
+    gamma = 1.0
+    d_list = []
+    S_list = []
+    gamma_list = []
+    gamma = 1
+    epoch = 0
+    for k in rng:
+
+        if gamma > 0.99999:
+            epoch = 0
+            S_list = []
+            d_list = []
+        if k == 1 or epoch == 0:
+            epoch = epoch + 1
+            t = model.tau(flows)
+            sk_FW = model.flows_on_shortest(t)
+            dk = sk_FW - flows
+            S_list.append(sk_FW)
+            d_list.append(dk)
+        else:
+            t = model.tau(flows)
+            sk_FW = model.flows_on_shortest(t)
+            dk_FW = sk_FW - flows
+            hessian = model.diff_tau(flows)
+
+            B = np.sum(d_list * hessian * d_list, axis=1)
+            A = np.sum(d_list * hessian * dk_FW, axis=1)
+            N = len(B)
+            betta = [-1] * (N + 1)
+            betta_sum = 0
+            delta = 0.0001
+            for m in range(N, 0, -1):
+                betta[m] = -A[-m] / (
+                    B[-m] * (1 - gamma_list[-m])
+                ) + betta_sum * gamma_list[-m] / (1 - gamma_list[-m])
+                if betta[m] < 0:
+                    betta[m] = 0
+                else:
+                    betta_sum = betta_sum + betta[m]
+            alpha_0 = 1 / (1 + betta_sum)
+            alpha = np.array(betta)[1:] * alpha_0
+            alpha = alpha[::-1]
+
+            sk = alpha_0 * sk_FW + np.sum(alpha * np.array(S_list).T, axis=1)
+            dk = sk - flows
+
+            d_list.append(dk)
+            S_list.append(sk)
+
+            epoch = epoch + 1
+
+            if epoch > cnt_conjugates:
+                d_list.pop(0)
+                S_list.pop(0)
+                gamma_list.pop(0)
+
+        if linesearch:
+            res = minimize_scalar(
+                lambda y: model.primal(flows + y * dk),
+                bounds=(0.0, 1.0),
+                options={"xatol": 1e-12},
+            )
+            gamma = res.x
+        else:
+            gamma = 2.0 / (k + 2)
+
+        gamma_list.append(gamma)
+
+        dual_val = model.dual(t, sk_FW)
+        max_dual_func_val = max(max_dual_func_val, dual_val)
+
+        flows = flows + gamma * dk
+
+        primal = model.primal(flows)
+        primal_log.append(primal)
+        dgap_log.append(primal - max_dual_func_val)
+        relative_gap_log.append((primal - max_dual_func_val) / max_dual_func_val)
+        time_log.append(time.time())
+
+        if stop_by_crit and dgap_log[-1] <= eps_abs:
+            optimal = True
+            break
+
+    return (
+        t,
+        flows,
+        (
+            dgap_log,
+            np.array(time_log) - time_log[0],
+            {"primal": primal_log, "relative_gap": relative_gap_log},
+        ),
         optimal,
     )
 
