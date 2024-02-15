@@ -70,6 +70,10 @@ def frank_wolfe(
             optimal = True
             break
 
+        flows_averaged = (
+            flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
+        )
+
     return (
         times,
         flows_averaged,

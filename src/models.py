@@ -6,7 +6,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 
 from src.commons import Correspondences
-from src.cvxpy_solvers import solve_min_cost_concurrent_flow
+from src.cvxpy_solvers import solve_min_cost_concurrent_flow, solve_beckmann_model_cp
 from src.newton import newton
 
 from src.shortest_paths_gt import (
@@ -59,7 +59,7 @@ class Model(ABC):
 
     @abstractmethod
     def func_psigrad_primal(self, times) -> tuple[float, np.ndarray, np.ndarray]:
-        """Returns minus dual func value, gradient of \Psi (non-composite term),
+        """Returns minus dual func value, gradient of Psi (non-composite term),
         and corresponding primal variable value
            Needed for USTM
         """
@@ -124,9 +124,12 @@ class TrafficModel(Model, ABC):
 
 class BeckmannModel(TrafficModel):
     """Dualized on the constraint that flows respect correspondences"""
+    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences):
+        super().__init__(nx_graph, correspondences)
+        self.graph_props = get_graph_props(self.graph)  # for some reason, this call is slow, so cache results
 
     def tau(self, flows):
-        fft, mu, rho, caps = get_graph_props(self.graph)
+        fft, mu, rho, caps = self.graph_props
         
         result = np.empty(len(mu))
         result[self.all_cases] = fft[self.all_cases]*(1 + rho[self.all_cases])
@@ -143,7 +146,7 @@ class BeckmannModel(TrafficModel):
         return result
 
     def tau_inv(self, times):
-        fft, mu, rho, caps = get_graph_props(self.graph)
+        fft, mu, rho, caps = self.graph_props
         result = np.empty(len(mu))
         
         result[self.all_cases] = 0
@@ -151,8 +154,7 @@ class BeckmannModel(TrafficModel):
         return result
 
     def sigma(self, flows) -> np.ndarray:
-
-        fft, mu, rho, caps = get_graph_props(self.graph)
+        fft, mu, rho, caps = self.graph_props
         result = np.empty(len(mu))
 
         result[self.all_cases] = fft[self.all_cases]*flows[self.all_cases]*(1 + rho[self.all_cases]) 
@@ -161,20 +163,18 @@ class BeckmannModel(TrafficModel):
 
 
     def sigma_star(self, times) -> np.ndarray:
-        fft, mu, rho, caps = get_graph_props(self.graph)
+        fft, mu, rho, caps = self.graph_props
 
         dt = np.maximum(0, times - fft)
 
         result = np.empty(len(mu))
-
-        # print( np.sum(caps[self.is_not_inf] <= 0 ) , np.sum(rho[self.is_not_inf] <= 0 ) , np.sum(mu[self.is_not_inf] <= 0) ,np.sum(fft[self.is_not_inf] <= 0) )
 
         result[self.all_cases] = 0
         result[~self.all_cases] = caps[~self.all_cases] * (dt[~self.all_cases] / (fft[~self.all_cases] * rho[~self.all_cases])) ** mu[~self.all_cases] * dt[~self.all_cases] / (1 + mu[~self.all_cases])
         return result
 
     def primal(self, flows: np.ndarray) -> float:   
-        return self.sigma(flows).sum()
+        return float(self.sigma(flows).sum())
 
     def composite(self, times: np.ndarray) -> float:
         return self.sigma_star(times).sum()
@@ -200,13 +200,14 @@ class BeckmannModel(TrafficModel):
 
         return result
 
-    def solve_cvxpy(self, **solver_kwargs):
+    def solve_cvxpy(self, **solver_kwargs) -> np.ndarray:
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
-        # TODO: implement
-        return None
-        # flows_ie, costs, potentials, nonneg_duals = solve_beckmann(self.nx_graph, self.correspondences.traffic_mat,
-        #                                                            **solver_kwargs)
-        # return flows_ie, costs, potentials, nonneg_duals
+        flows_ei, potentials = solve_beckmann_model_cp(
+            self.correspondences.traffic_mat, self.nx_graph, **solver_kwargs
+        )
+        assert flows_ei is not None
+
+        return flows_ei.sum(axis=1)
 
 
 class SDModel(TrafficModel):
@@ -234,11 +235,11 @@ class SDModel(TrafficModel):
     def solve_cvxpy(self, **solver_kwargs):
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
 
-        flows_ie, costs, potentials, nonneg_duals = solve_min_cost_concurrent_flow(
+        flows_ei, costs, potentials, nonneg_duals = solve_min_cost_concurrent_flow(
             self.nx_graph, self.correspondences.node_traffic_mat, **solver_kwargs
         )
         return (
-            flows_ie.sum(axis=0),
+            flows_ei.sum(axis=1),
             self.graph.ep.free_flow_times.a + costs,
             potentials,
             nonneg_duals,
@@ -257,11 +258,6 @@ class TwostageModel(Model):
         self.departures = departures
         self.arrivals = arrivals
         self.gamma = gamma
-        self.sinkhorn = sinkhorn.Sinkhorn(
-            self.departures,
-            self.arrivals,
-            max_iter=int(1e5),
-        )
 
         # previous solution to reuse as starting point
         # save it here, because entropy model is hidden from solver-side in case of USTM
@@ -270,7 +266,13 @@ class TwostageModel(Model):
     def solve_entropy_model(
         self, distance_mat
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        traffic_mat, self.lambda_l_prev, self.lambda_w_prev = self.sinkhorn.run(
+        """Calls sinkhorn to solve linear-entropy problem. Saves previous solution to reuse as starting point"""
+        snkh = sinkhorn.Sinkhorn(
+            departures=self.departures,
+            arrivals=self.arrivals,
+            max_iter=int(1e5),
+        )
+        traffic_mat, self.lambda_l_prev, self.lambda_w_prev = snkh.run(
             self.gamma * distance_mat, self.lambda_l_prev, self.lambda_w_prev
         )
         return traffic_mat, self.lambda_l_prev, self.lambda_w_prev
@@ -289,9 +291,12 @@ class TwostageModel(Model):
         )
 
     def primal(self, flows: np.ndarray, traffic_mat: np.ndarray) -> float:
+        zero_mask = traffic_mat == 0  # to make x * ln(x) = 0
+        tmp = traffic_mat.copy()
+        tmp[zero_mask] = 1
         return (
             self.gamma * self.traffic_model.primal(flows)
-            + (traffic_mat * np.log(traffic_mat)).sum()
+            + (traffic_mat * np.log(tmp)).sum()
         )
 
     def dual(
