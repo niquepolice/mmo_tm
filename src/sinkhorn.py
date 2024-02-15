@@ -53,7 +53,7 @@ class Sinkhorn:
         departures: np.ndarray,
         arrivals: np.ndarray,
         max_iter: int,
-        eps: float = 1e-6,
+        eps: float = 1e-8,
         crit_check_period: int = 10,
         use_numba: Optional[bool]=None,
     ):
