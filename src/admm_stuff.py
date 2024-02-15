@@ -1,3 +1,6 @@
+import warnings
+from typing import Optional
+
 import networkx as nx
 import numpy as np
 from matplotlib import pyplot as plt
@@ -59,6 +62,8 @@ class AdmmOracle:
             d_ij: np.ndarray,
             y: np.ndarray,
             rho: float,
+            x0: Optional[np.ndarray] = None,
+            eps_abs: Optional[float] = None,
             iters: int = 1000,
             M0: float = 1e1,
             plot_convergence: bool = False,
@@ -86,7 +91,7 @@ class AdmmOracle:
         M = M0
         beta = 0
 
-        zeta = eta = x = np.ones((self.incidence_mat.shape[1], d_ij.shape[0]))
+        zeta = eta = x = x0.copy() if x0 is not None else np.ones((self.incidence_mat.shape[1], d_ij.shape[0]))
         for i in range(iters):
             M /= 2
 
@@ -106,10 +111,18 @@ class AdmmOracle:
                     break
                 M *= 2
 
-            if not i % (iters // 5):
-                print("flows agd:", np.linalg.norm(np.minimum(grad_x, 0)), f"{M= :.1e}")
+            metric = np.linalg.norm(np.minimum(grad_x, 0))
+            log.append(metric)
 
-            log.append(np.linalg.norm(np.minimum(grad_x, 0)))
+            if eps_abs and metric < eps_abs:
+                break
+
+                # if not i % (iters // 5):
+                #     print("flows agd:", metric, f"{M= :.1e}")
+
+
+        if i == iters - 1:
+            warnings.warn(f"Agd reached iter limit", category=RuntimeWarning)
 
         if plot_convergence:
             plt.plot(log, label="||(grad_x)_{-}||")
@@ -126,6 +139,9 @@ class AdmmOracle:
         rho: float,
         mu: float,
         L: float,
+        x0: Optional[np.ndarray] = None,
+        y0: Optional[np.ndarray] = None,
+        eps_abs: Optional[float] = None,
         iters: int = 1000,
         plot_convergence: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -141,10 +157,9 @@ class AdmmOracle:
         def gradF(x):
             return (np.log(x) + 1) / gamma + z + rho * (self.BTmul(self.Bmul(x) + g))
 
-        x0 = np.ones((self.l.size, self.w.size))
-        xf = x = x0
+        xf = x = np.ones((self.l.size, self.w.size)) if x0 is None else x0.copy()
         b = np.hstack((self.l, self.w))
-        y = np.zeros(b.size)
+        y = np.zeros(b.size) if y0 is None else y0.copy()
 
         # alg parameters
         n = self.l.size
@@ -169,16 +184,25 @@ class AdmmOracle:
             x = np.maximum(x, eps)
             xf = xg + 2 * tau / (2 - tau) * (x - x_prev)
 
-            if not i % (iters // 5):
-                print(
-                    f"Salim cons={np.linalg.norm(self.Kmul(x) - b):.3e}",
-                    f"func={np.linalg.norm(gradF(x) + self.KTmul(y)):.3e}"
-                )
+
+            metric = np.linalg.norm(self.Kmul(x) - b) + np.linalg.norm(gradF(x) + self.KTmul(y))
+
+            if not iters % 10 and eps_abs and metric < eps_abs:
+                break
+
+            # if not i % (iters // 5):
+            #     print(
+            #         f"Salim cons={np.linalg.norm(self.Kmul(x) - b):.3e}",
+            #         f"func={np.linalg.norm(gradF(x) + self.KTmul(y)):.3e}"
+            #     )
 
             if plot_convergence:
                 log_cons.append(np.linalg.norm(self.Kmul(x) - b))
                 log_func.append(np.linalg.norm(gradF(x) + self.KTmul(y)))
 
+        if i == iters - 1:
+            warnings.warn(f"Salim reached iter limit", category=RuntimeWarning)
+        # print("salim", i)
         if plot_convergence:
             plt.plot(log_cons, label="cons")
             plt.plot(log_func, label="func")

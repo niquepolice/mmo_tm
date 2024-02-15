@@ -1,4 +1,5 @@
 from typing import Optional
+import warnings
 
 import numpy as np
 import time
@@ -412,12 +413,16 @@ def cyclic(
     # entropy_eps: Union[float, None] = None,
     max_iter: int = 20,
     stop_by_crit: bool = True,
+    solution_flows: Optional[np.ndarray] = None,
+    solution_corrs: Optional[np.ndarray] = None,
 ) -> tuple:
     """For twostage model"""
 
     dgap_log = []
     cons_log = []
     time_log = []
+    flows_dist_log = []
+    corrs_dist_log = []
 
     rng = range(1_000_000) if max_iter == 0 else tqdm(range(max_iter))
 
@@ -436,15 +441,18 @@ def cyclic(
         traffic_model.set_traffic_mat(traffic_mat)
         # isinstance fails after autoreload
         if traffic_model.__class__.__name__ == "BeckmannModel":
-            times, flows, inner_dgap_log, *_ = frank_wolfe(
+            times, flows, inner_logs, success = N_conjugate_frank_wolfe(
                 traffic_model,
                 eps_abs=traffic_assigment_eps_abs,
                 max_iter=traffic_assigment_max_iter,
+                linesearch=True,
                 times_start=times,
                 use_tqdm=False,
+                cnt_conjugates=3,
             )
+            print(k, len(inner_logs[0]))
         elif traffic_model.__class__.__name__ == "SDModel":
-            times, flows, inner_dgap_log, *_ = ustm(
+            times, flows, inner_logs, success = ustm(
                 traffic_model,
                 eps_abs=traffic_assigment_eps_abs,
                 max_iter=traffic_assigment_max_iter,
@@ -454,6 +462,13 @@ def cyclic(
             assert (
                 False
             ), f"traffic_model has wrong class name : {type(traffic_model.__class__.__name__)}"
+        if not success:
+            warnings.warn(f"Traffic model solver did not converge on big iter {k}", category=RuntimeWarning)
+
+        if solution_flows is not None:
+            flows_dist_log.append(np.linalg.norm(flows - solution_flows))
+        if solution_corrs is not None:
+            corrs_dist_log.append(np.linalg.norm(traffic_mat - solution_corrs))
 
         # print(f"inner iters={len(inner_dgap_log)}")
         distance_mat = model.distance_mat(times)
@@ -477,6 +492,6 @@ def cyclic(
         times,
         flows,
         traffic_mat,
-        (dgap_log, cons_log, np.array(time_log) - time_log[0]),
+        (dgap_log, cons_log, np.array(time_log) - time_log[0]) + ((flows_dist_log, corrs_dist_log) if flows_dist_log else ()),
         optimal,
     )
