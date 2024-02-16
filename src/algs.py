@@ -407,9 +407,9 @@ def subgd(
 
 def cyclic(
     model: TwostageModel,
-    eps_abs: float,  # dgap tolerance
     traffic_assigment_eps_abs: float,
     traffic_assigment_max_iter: int = 100,
+    eps_abs: Optional[float] = None,  # dgap tolerance
     # entropy_eps: Union[float, None] = None,
     max_iter: int = 20,
     stop_by_crit: bool = True,
@@ -450,7 +450,7 @@ def cyclic(
                 use_tqdm=False,
                 cnt_conjugates=3,
             )
-            print(k, len(inner_logs[0]))
+            # print(k, len(inner_logs[0]))
         elif traffic_model.__class__.__name__ == "SDModel":
             times, flows, inner_logs, success = ustm(
                 traffic_model,
