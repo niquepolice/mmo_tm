@@ -24,17 +24,19 @@ class AdmmOracle:
         self.incidence_mat = nx.incidence_matrix(traffic_model.nx_graph, oriented=True).todense()
         self.gamma = gamma
         self.l, self.w = l, w
+        self.n_nodes, self.n_edges = self.incidence_mat.shape
+        self.n_centroids = l.size
 
     # All arguments are 2d
 
     # z = B.Ty, g = Af, Bd = traffic_lapl
-    @staticmethod
-    def Bmul(x: np.ndarray) -> np.ndarray:
-        return np.diag(x.sum(axis=1)) - x
+    def Bmul(self, x: np.ndarray) -> np.ndarray:
+        res = np.zeros((self.n_centroids, self.n_nodes))
+        res[:, :self.n_centroids] = (np.diag(x.sum(axis=1)) - x)
+        return res
 
-    @staticmethod
-    def BTmul(x: np.ndarray) -> np.ndarray:
-        return np.diag(x)[:, np.newaxis] - x
+    def BTmul(self, y: np.ndarray) -> np.ndarray:
+        return np.diag(y)[:, np.newaxis] - y[:, :self.n_centroids]
 
     @staticmethod
     def Kmul(x: np.ndarray) -> np.ndarray:
@@ -48,8 +50,8 @@ class AdmmOracle:
     def Amul(self, x: np.ndarray) -> np.ndarray:
         return (self.incidence_mat @ x).T
 
-    def ATmul(self, x: np.ndarray) -> np.ndarray:
-        return (x @ self.incidence_mat).T
+    def ATmul(self, y: np.ndarray) -> np.ndarray:
+        return (y @ self.incidence_mat).T
 
     def grad_d(self, d: np.ndarray) -> np.ndarray:
         """of the objective in combined problem: gradient of entropy"""
@@ -237,14 +239,15 @@ def combined_salim(
         return np.vstack((oracle.ATmul(yAB), oracle.BTmul(yAB)))
         
 
-    gamma = oracle.gamma
+    gamma = oracle.gamma 
 
+    n_nodes, n_edges = oracle.incidence_mat.shape
     xf_corrs = x_corrs = np.ones((oracle.l.size, oracle.w.size)) if corrs0 is None else corrs0.copy()
-    xf_flows = x_flows = np.zeros((oracle.incidence_mat.shape[1], oracle.l.size)) if corrs0 is None else corrs0.copy()
+    xf_flows = x_flows = np.zeros((n_edges, oracle.l.size)) if corrs0 is None else corrs0.copy()
 
     b = np.hstack((oracle.l, oracle.w))
     yK = np.zeros(b.size)
-    yAB = np.zeros(x_corrs.shape)
+    yAB = np.zeros((oracle.l.size, n_nodes))
 
     # alg parameters
     n = oracle.l.size
@@ -260,13 +263,43 @@ def combined_salim(
 
     eps = 1e-6
     start = time.time()
-    for i in range(iters):
+
+    grad_full_prev = None
+    x_full_prev = None
+
+    Lmax = 0
+    mumin = 1e10 
+
+    for i in tqdm(range(iters)):
+        # if not i % 1000:
+        #     xf_corrs = x_corrs
+        #     xf_flows = x_flows
+            
+
         xg_corrs = tau * x_corrs + (1 - tau) * xf_corrs
         xg_flows = tau * x_flows + (1 - tau) * xf_flows
 
         # dFxg = gradF(xg)
         dFxg_corrs = oracle.grad_d(xg_corrs)
         dFxg_flows = oracle.grad_f(xg_flows)
+
+        grad_full = np.hstack((dFxg_corrs.flatten(), (dFxg_flows[:, np.newaxis] @ np.ones((1, oracle.l.size))).flatten()))
+        x_full = np.hstack((xg_corrs.flatten(), xg_flows.flatten()))
+        if x_full_prev is not None:
+            dgrad = grad_full - grad_full_prev
+            dx = x_full - x_full_prev
+            Lcur = np.linalg.norm(dgrad) / np.linalg.norm(dx)
+            if Lcur > Lmax:
+                Lmax = Lcur
+            # print(dFxg_corrs.shape, xg_corrs.shape, dFxg_flows.shape, xg_flows.shape)
+            mucur = (dgrad @ dx) / (dx @ dx)
+            assert mucur >= 0
+            if mucur < mumin:
+                mumin = mucur
+
+        grad_full_prev = grad_full
+        x_full_prev = x_full
+            
 
         x_half_corrs = 1 / (1 + eta * alpha) * (x_corrs - eta * (dFxg_corrs - alpha * xg_corrs + oracle.BTmul(yAB) + oracle.KTmul(yK)))
         x_half_corrs = np.maximum(x_half_corrs, eps)
@@ -308,6 +341,11 @@ def combined_salim(
         log_Kcons.append(Kcons)
         log_ABcons.append(ABcons)
         log_opt.append(opt)
+
+    print("Lmax=", Lmax)
+    print("mumin=", mumin)
+
+    print(Kcons, ABcons, opt)
 
 
     if i == iters - 1:
