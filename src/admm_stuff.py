@@ -31,12 +31,27 @@ class AdmmOracle:
 
     # z = B.Ty, g = Af, Bd = traffic_lapl
     def Bmul(self, x: np.ndarray) -> np.ndarray:
+        sources = self.traffic_model.correspondences.sources 
+        targets = self.traffic_model.correspondences.targets
         res = np.zeros((self.n_centroids, self.n_nodes))
-        res[:, :self.n_centroids] = (np.diag(x.sum(axis=1)) - x)
+        if sources[0] == targets[0]:  # no non-thru
+            res[:, :self.n_centroids] = np.diag(x.sum(axis=1)) - x
+        elif targets[-1] == self.n_nodes - 1:  # non-thru centroids
+            res[sources, sources] = x.sum(axis=1)
+            res[:, -self.n_centroids:] = -x
+        else: assert False, "Unsupported node ordering"
+        # res = np.diag(res.sum(axis=1)) - res
         return res
 
     def BTmul(self, y: np.ndarray) -> np.ndarray:
-        return np.diag(y)[:, np.newaxis] - y[:, :self.n_centroids]
+        # return np.diag(y)[:, np.newaxis] - y[:, :self.n_centroids]
+        sources = self.traffic_model.correspondences.sources 
+        targets = self.traffic_model.correspondences.targets
+        if sources[0] == targets[0]:  # no non-thru
+            return np.diag(y)[:, np.newaxis] - y[:, :self.n_centroids]
+        elif targets[-1] == self.n_nodes - 1:  # non-thru centroids
+            return np.diag(y)[:, np.newaxis] - y[:, -self.n_centroids:]
+        else: assert False, "Unsupported node ordering"
 
     @staticmethod
     def Kmul(x: np.ndarray) -> np.ndarray:
