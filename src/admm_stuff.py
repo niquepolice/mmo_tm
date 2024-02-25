@@ -380,9 +380,6 @@ def combined_salim(
 
     print(Kcons, ABcons, opt)
 
-    if i == iters - 1:
-        warnings.warn(f"Salim reached iter limit", category=RuntimeWarning)
-    print("salim", i)
     if plot_convergence:
         plt.plot(log_Kcons, label="K")
         plt.plot(log_ABcons, label="AB")
@@ -410,7 +407,7 @@ def combined_salim_with_cheb(
     iters: int = 1000,
     plot_convergence: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Salim Kovalev 2022 without Cheb acceleration"""
+    """Salim Kovalev 2022 with Cheb acceleration"""
 
     _, n_edges = oracle.incidence_mat.shape
     xf_flows = x_flows = np.zeros((n_edges, oracle.l.size)) if corrs0 is None else corrs0.copy()
@@ -423,10 +420,21 @@ def combined_salim_with_cheb(
     # alg parameters
     kappa = L / mu
 
-    tau = min(1, 0.5 * np.sqrt(19 / (15 * kappa)))
+
+    rho = (lam1 - lam2) ** 2 / 16
+    nu = (lam1 + lam2) / 2
+    N = int((lam1 / lam2) ** 0.5 + 10)
+
+    # chebyshev will bring lam1 and lam2 closer:
+    lam1, lam2 = 20/15, 10/15 
+    tau = min(1, 0.5 * (mu * lam1 / L / lam2) ** 0.5)
     eta = 1 / (4 * tau * L)
-    theta = 15 / (19 * eta)
+    theta = 1 / (eta * lam1)
     alpha = mu
+
+    # rho = (lam1 - lam2) ** 2 / 16
+    # nu = (lam1 + lam2) / 2
+    # N = int((lam1 / lam2) ** 0.5 + 10)
 
     times = []
     log_Kcons, log_ABcons, log_opt, log_dist = [], [], [], []
@@ -434,22 +442,21 @@ def combined_salim_with_cheb(
     eps = 1e-6
     start = time.time()
 
-    rho = (lam1 - lam2) ** 2 / 16
-    nu = (lam1 + lam2) / 2
-
+    print("N", N)
     def cheb_iter(z_flows: np.ndarray, z_corrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         gamma = -nu / 2
 
         def compute_p(z_flows: np.ndarray, z_corrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
             Kz_flows = oracle.Amul(z_flows) + oracle.Bmul(z_corrs)
             Kz_corrs = oracle.Kmul(z_corrs) - b
-            return -oracle.ATmul(Kz_flows) / nu, -(oracle.BTmul(Kz_flows) + oracle.KTmul(Kz_corrs)) / nu
+            return oracle.ATmul(Kz_flows), (oracle.BTmul(Kz_flows) + oracle.KTmul(Kz_corrs))
 
         p_flows, p_corrs = compute_p(z_flows, z_corrs)
-        z_flows += p_flows
-        z_corrs += p_corrs
+        p_flows, p_corrs = -p_flows/nu, -p_corrs/nu
+        z_flows = z_flows + p_flows
+        z_corrs = z_corrs + p_corrs
 
-        for _ in tqdm(range(250)):
+        for _ in range(N):
             beta = rho / gamma
             gamma = -(nu + beta)
             p_flows_tmp, p_corrs_tmp = compute_p(z_flows, z_corrs)
@@ -473,8 +480,8 @@ def combined_salim_with_cheb(
         x_half_corrs = np.maximum(x_half_corrs, eps)
 
         z_flows, z_corrs = cheb_iter(x_half_flows, x_half_corrs)
-        r_flows = theta * (x_flows - z_flows)
-        r_corrs = theta * (x_corrs - z_corrs)
+        r_flows = theta * (x_half_flows - z_flows)
+        r_corrs = theta * (x_half_corrs - z_corrs)
 
         u_flows += r_flows
         u_corrs += r_corrs
@@ -518,9 +525,6 @@ def combined_salim_with_cheb(
 
     print(Kcons, ABcons, opt)
 
-    if i == iters - 1:
-        warnings.warn(f"Salim with Cheb reached iter limit", category=RuntimeWarning)
-    print("salim with Cheb", i)
     if plot_convergence:
         plt.plot(log_Kcons, label="K")
         plt.plot(log_ABcons, label="AB")
