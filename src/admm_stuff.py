@@ -260,7 +260,7 @@ def combined_salim(
 
     n_nodes, n_edges = oracle.incidence_mat.shape
     xf_corrs = x_corrs = np.ones((oracle.l.size, oracle.w.size)) if corrs0 is None else corrs0.copy()
-    xf_flows = x_flows = np.zeros((n_edges, oracle.l.size)) if corrs0 is None else corrs0.copy()
+    xf_flows = x_flows = np.zeros((n_edges, oracle.l.size)) if flows0 is None else flows0.copy()
 
     b = np.hstack((oracle.l, oracle.w))
     yK = np.zeros(b.size)
@@ -410,7 +410,7 @@ def combined_salim_with_cheb(
     """Salim Kovalev 2022 with Cheb acceleration"""
 
     _, n_edges = oracle.incidence_mat.shape
-    xf_flows = x_flows = np.zeros((n_edges, oracle.l.size)) if corrs0 is None else corrs0.copy()
+    xf_flows = x_flows = np.zeros((n_edges, oracle.l.size)) if flows0 is None else flows0.copy()
     xf_corrs = x_corrs = np.ones((oracle.l.size, oracle.w.size)) if corrs0 is None else corrs0.copy()
 
     b = np.hstack((oracle.l, oracle.w))
