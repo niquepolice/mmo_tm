@@ -77,6 +77,7 @@ class SaddleOracle:
         """of the objective in combined problem: gradient of sum of sigmas"""
         return self.traffic_model.tau(f_ei.sum(axis=1))[:, np.newaxis]
 
+
 def combined_salim(
     oracle: SaddleOracle,
     mu: float,
@@ -244,13 +245,12 @@ def combined_salim_with_cheb(
     # alg parameters
     kappa = L / mu
 
-
     rho = (lam1 - lam2) ** 2 / 16
     nu = (lam1 + lam2) / 2
     N = int((lam1 / lam2) ** 0.5 + 10)
 
     # chebyshev will bring lam1 and lam2 closer:
-    lam1, lam2 = 20/15, 10/15 
+    lam1, lam2 = 20 / 15, 10 / 15
     tau = min(1, 0.5 * (mu * lam1 / L / lam2) ** 0.5)
     eta = 1 / (4 * tau * L)
     theta = 1 / (eta * lam1)
@@ -263,6 +263,7 @@ def combined_salim_with_cheb(
     start = time.time()
 
     print("N", N)
+
     def cheb_iter(z_flows: np.ndarray, z_corrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         gamma = -nu / 2
 
@@ -272,7 +273,7 @@ def combined_salim_with_cheb(
             return oracle.ATmul(Kz_flows), (oracle.BTmul(Kz_flows) + oracle.KTmul(Kz_corrs))
 
         p_flows, p_corrs = compute_p(z_flows, z_corrs)
-        p_flows, p_corrs = -p_flows/nu, -p_corrs/nu
+        p_flows, p_corrs = -p_flows / nu, -p_corrs / nu
         z_flows = z_flows + p_flows
         z_corrs = z_corrs + p_corrs
 

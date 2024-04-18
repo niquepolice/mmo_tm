@@ -12,9 +12,7 @@ def read_metadata_networks_tntp(filename: Path) -> dict:
     with open(filename, "r") as file:
         zones = int(file.readline()[len("<NUMBER OF ZONES>") :].strip())
         nodes = int(file.readline()[len("<NUMBER OF NODES>") :].strip())
-        can_pass_through_zones = (
-            int(file.readline()[len("<FIRST THRU NODE>") :].strip()) == 1
-        )
+        can_pass_through_zones = int(file.readline()[len("<FIRST THRU NODE>") :].strip()) == 1
     return dict(zones=zones, nodes=nodes, can_pass_through_zones=can_pass_through_zones)
 
 
@@ -31,12 +29,7 @@ def read_graph_transport_networks_tntp(filename: Path) -> tuple[nx.DiGraph, dict
     net.loc[:, ["init_node", "term_node"]] -= 1
 
     graph = nx.DiGraph()
-    graph.add_nodes_from(
-        range(
-            metadata["nodes"]
-            + (0 if metadata["can_pass_through_zones"] else metadata["zones"])
-        )
-    )
+    graph.add_nodes_from(range(metadata["nodes"] + (0 if metadata["can_pass_through_zones"] else metadata["zones"])))
 
     for row in net.iterrows():
         init_node = row[1].init_node
@@ -55,9 +48,7 @@ def read_graph_transport_networks_tntp(filename: Path) -> tuple[nx.DiGraph, dict
     return graph, metadata
 
 
-def read_traffic_mat_transport_networks_tntp(
-    filename: Path, metadata: dict
-) -> Correspondences:
+def read_traffic_mat_transport_networks_tntp(filename: Path, metadata: dict) -> Correspondences:
     # Made on the basis of
     # https://github.com/bstabler/TransportationNetworks/blob/master/_scripts/parsing%20networks%20in%20Python.ipynb
 
@@ -108,9 +99,7 @@ def update_node_coordinates(node_coords: dict, metadata: dict):
             node_coords[key + metadata["nodes"]] = node_coords[key].copy()
 
 
-def read_node_coordinates_transport_networks_tntp(
-    filename: Path, metadata: dict
-) -> dict:
+def read_node_coordinates_transport_networks_tntp(filename: Path, metadata: dict) -> dict:
     try:
         data = pd.read_csv(
             filename,
@@ -119,9 +108,7 @@ def read_node_coordinates_transport_networks_tntp(
             names=["node", "x", "y", "semicolon"],
         )
     except pd.errors.ParserError:
-        data = pd.read_csv(
-            filename, delim_whitespace=True, header=0, names=["node", "x", "y"]
-        )
+        data = pd.read_csv(filename, delim_whitespace=True, header=0, names=["node", "x", "y"])
     data = data.loc[:, ["x", "y"]]
 
     node_coords = {}

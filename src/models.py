@@ -15,13 +15,12 @@ from src.shortest_paths_gt import (
     get_graph_props,
     distance_mat_gt,
 )
+
 # import src.sinkhorn_gpu as sinkhorn
 import src.sinkhorn as sinkhorn
 
 
-def maybe_create_and_get_times_ep(
-    graph: gt.Graph, times: np.ndarray
-) -> gt.EdgePropertyMap:
+def maybe_create_and_get_times_ep(graph: gt.Graph, times: np.ndarray) -> gt.EdgePropertyMap:
     if "times" not in graph.edge_properties:
         times_ep = graph.new_edge_property("double")
         graph.ep["times"] = times_ep
@@ -71,15 +70,15 @@ class TrafficModel(Model, ABC):
         self.nx_graph = nx_graph
         self.graph = get_graphtool_graph(nx_graph)
         self.correspondences = correspondences
-        
+
         fft, mu, rho, caps = get_graph_props(self.graph)
-        
+
         mu_mask = mu == np.inf
         rho_mask = rho == 0
         fft_mask = fft == 0
         # the degenerate case : cost does not idepend on the flow
-        self.all_cases = mu_mask + rho_mask + fft_mask 
-    
+        self.all_cases = mu_mask + rho_mask + fft_mask
+
     def flows_on_shortest(
         self, times: np.ndarray, return_distance_mat: bool = False
     ) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
@@ -124,43 +123,62 @@ class TrafficModel(Model, ABC):
 
 class BeckmannModel(TrafficModel):
     """Dualized on the constraint that flows respect correspondences"""
+
     def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences):
         super().__init__(nx_graph, correspondences)
         self.graph_props = get_graph_props(self.graph)  # for some reason, this call is slow, so cache results
 
     def tau(self, flows):
         fft, mu, rho, caps = self.graph_props
-        
+
         result = np.empty(len(mu))
-        result[self.all_cases] = fft[self.all_cases]*(1 + rho[self.all_cases])
-        result[~self.all_cases] = fft[~self.all_cases] * (1 + rho[~self.all_cases] * (flows[~self.all_cases] / caps[~self.all_cases]) ** (1 / mu[~self.all_cases]))
+        result[self.all_cases] = fft[self.all_cases] * (1 + rho[self.all_cases])
+        result[~self.all_cases] = fft[~self.all_cases] * (
+            1 + rho[~self.all_cases] * (flows[~self.all_cases] / caps[~self.all_cases]) ** (1 / mu[~self.all_cases])
+        )
         return result
 
     def diff_tau(self, flows):
         fft, mu, rho, caps = get_graph_props(self.graph)
-        
+
         result = np.empty(len(mu))
-         
+
         result[self.all_cases] = 0
-        result[~self.all_cases] = (1.0 / mu[~self.all_cases]) * fft[~self.all_cases] * rho[~self.all_cases] * np.power(flows[~self.all_cases] , (1.0 / mu[~self.all_cases]) - 1.0 ) / np.power(caps[~self.all_cases], 1.0 / mu[~self.all_cases])
+        result[~self.all_cases] = (
+            (1.0 / mu[~self.all_cases])
+            * fft[~self.all_cases]
+            * rho[~self.all_cases]
+            * np.power(flows[~self.all_cases], (1.0 / mu[~self.all_cases]) - 1.0)
+            / np.power(caps[~self.all_cases], 1.0 / mu[~self.all_cases])
+        )
         return result
 
     def tau_inv(self, times):
         fft, mu, rho, caps = self.graph_props
         result = np.empty(len(mu))
-        
+
         result[self.all_cases] = 0
-        result[~self.all_cases] = caps[~self.all_cases] * ((times[~self.all_cases] / fft[~self.all_cases] - 1) / rho[~self.all_cases]) ** mu[~self.all_cases]
+        result[~self.all_cases] = (
+            caps[~self.all_cases]
+            * ((times[~self.all_cases] / fft[~self.all_cases] - 1) / rho[~self.all_cases]) ** mu[~self.all_cases]
+        )
         return result
 
     def sigma(self, flows) -> np.ndarray:
         fft, mu, rho, caps = self.graph_props
         result = np.empty(len(mu))
 
-        result[self.all_cases] = fft[self.all_cases]*flows[self.all_cases]*(1 + rho[self.all_cases]) 
-        result[~self.all_cases] = fft[~self.all_cases] * flows[~self.all_cases] * (1 + (rho[~self.all_cases] / (1 + 1 / mu[~self.all_cases])) * (flows[~self.all_cases] / caps[~self.all_cases]) ** (1 / mu[~self.all_cases]))
+        result[self.all_cases] = fft[self.all_cases] * flows[self.all_cases] * (1 + rho[self.all_cases])
+        result[~self.all_cases] = (
+            fft[~self.all_cases]
+            * flows[~self.all_cases]
+            * (
+                1
+                + (rho[~self.all_cases] / (1 + 1 / mu[~self.all_cases]))
+                * (flows[~self.all_cases] / caps[~self.all_cases]) ** (1 / mu[~self.all_cases])
+            )
+        )
         return result
-
 
     def sigma_star(self, times) -> np.ndarray:
         fft, mu, rho, caps = self.graph_props
@@ -170,18 +188,21 @@ class BeckmannModel(TrafficModel):
         result = np.empty(len(mu))
 
         result[self.all_cases] = 0
-        result[~self.all_cases] = caps[~self.all_cases] * (dt[~self.all_cases] / (fft[~self.all_cases] * rho[~self.all_cases])) ** mu[~self.all_cases] * dt[~self.all_cases] / (1 + mu[~self.all_cases])
+        result[~self.all_cases] = (
+            caps[~self.all_cases]
+            * (dt[~self.all_cases] / (fft[~self.all_cases] * rho[~self.all_cases])) ** mu[~self.all_cases]
+            * dt[~self.all_cases]
+            / (1 + mu[~self.all_cases])
+        )
         return result
 
-    def primal(self, flows: np.ndarray) -> float:   
+    def primal(self, flows: np.ndarray) -> float:
         return float(self.sigma(flows).sum())
 
     def composite(self, times: np.ndarray) -> float:
         return self.sigma_star(times).sum()
 
-    def dual_subgradient(
-        self, times: np.ndarray, flows_subgd: np.ndarray
-    ) -> np.ndarray:
+    def dual_subgradient(self, times: np.ndarray, flows_subgd: np.ndarray) -> np.ndarray:
         return flows_subgd - self.tau_inv(times)
 
     def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
@@ -221,9 +242,7 @@ class SDModel(TrafficModel):
         caps = self.graph.ep.capacities.a
         return (times - fft) @ caps
 
-    def dual_subgradient(
-        self, times: np.ndarray, flows_subgd: np.ndarray
-    ) -> np.ndarray:
+    def dual_subgradient(self, times: np.ndarray, flows_subgd: np.ndarray) -> np.ndarray:
         return flows_subgd - self.graph.ep.capacities.a
 
     def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
@@ -263,9 +282,7 @@ class TwostageModel(Model):
         # save it here, because entropy model is hidden from solver-side in case of USTM
         self.lambda_l_prev, self.lambda_w_prev = None, None
 
-    def solve_entropy_model(
-        self, distance_mat
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def solve_entropy_model(self, distance_mat) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Calls sinkhorn to solve linear-entropy problem. Saves previous solution to reuse as starting point"""
         snkh = sinkhorn.Sinkhorn(
             departures=self.departures,
@@ -294,10 +311,7 @@ class TwostageModel(Model):
         zero_mask = traffic_mat == 0  # to make x * ln(x) = 0
         tmp = traffic_mat.copy()
         tmp[zero_mask] = 1
-        return (
-            self.gamma * self.traffic_model.primal(flows)
-            + (traffic_mat * np.log(tmp)).sum()
-        )
+        return self.gamma * self.traffic_model.primal(flows) + (traffic_mat * np.log(tmp)).sum()
 
     def dual(
         self,

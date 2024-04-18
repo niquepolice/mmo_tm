@@ -4,10 +4,7 @@ from torch import from_numpy
 from typing import Tuple, Union
 
 
-def d_ij(
-    lambda_l_i: torch.Tensor, lambda_w_j: torch.Tensor, gammaT_ij: torch.Tensor
-) -> torch.Tensor:
-
+def d_ij(lambda_l_i: torch.Tensor, lambda_w_j: torch.Tensor, gammaT_ij: torch.Tensor) -> torch.Tensor:
     if isinstance(gammaT_ij, np.ndarray):
         gammaT_ij = torch.from_numpy(gammaT_ij)
 
@@ -30,7 +27,6 @@ class Sinkhorn:
         crit_check_period=10,
         device="cuda",
     ):
-
         if isinstance(departures, np.ndarray):
             departures = torch.from_numpy(departures)
         if isinstance(arrivals, np.ndarray):
@@ -45,15 +41,11 @@ class Sinkhorn:
         self.device = device
 
     @staticmethod
-    def logsumexp(
-        input: torch.Tensor, dim: int, keepdim: bool, b: torch.Tensor
-    ) -> torch.Tensor:
+    def logsumexp(input: torch.Tensor, dim: int, keepdim: bool, b: torch.Tensor) -> torch.Tensor:
         return torch.log(torch.sum(b * torch.exp(input), dim=dim, keepdim=keepdim))
 
     @staticmethod
-    def d_ij(
-        lambda_l_i: torch.Tensor, lambda_w_j: torch.Tensor, gammaT_ij: torch.Tensor
-    ) -> torch.Tensor:
+    def d_ij(lambda_l_i: torch.Tensor, lambda_w_j: torch.Tensor, gammaT_ij: torch.Tensor) -> torch.Tensor:
         return torch.exp(-(1 + gammaT_ij + lambda_w_j + lambda_l_i.unsqueeze(1)))
 
     def _iteration(
@@ -110,9 +102,7 @@ class Sinkhorn:
                 if self._criteria(lambda_l_i, lambda_w_j, gammaT_ij):
                     break
 
-            lambda_w_j, lambda_l_i = self._iteration(
-                k, gammaT_ij, lambda_w_j, lambda_l_i
-            )
+            lambda_w_j, lambda_l_i = self._iteration(k, gammaT_ij, lambda_w_j, lambda_l_i)
 
             k += 1
             if k == self.max_iter:

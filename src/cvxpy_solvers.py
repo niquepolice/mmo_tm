@@ -10,9 +10,7 @@ def solve_min_cost_concurrent_flow(
     traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
     incidence_mat = nx.incidence_matrix(graph, oriented=True).todense()
 
-    capacities = np.array(
-        list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32
-    )
+    capacities = np.array(list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32)
     costs = np.array(
         list(nx.get_edge_attributes(graph, "free_flow_times").values()),
         dtype=np.float32,
@@ -32,6 +30,7 @@ def solve_min_cost_concurrent_flow(
     costs, potentials, nonneg_duals = [cons.dual_value for cons in prob.constraints]
     return flows_ei, costs, potentials, nonneg_duals
 
+
 def solve_entropy_model_cp(
     departures: np.ndarray, arrivals: np.ndarray, distance_mat: np.ndarray, gamma: float
 ) -> np.ndarray:
@@ -47,15 +46,14 @@ def solve_entropy_model_cp(
 
     return d_ij.value
 
+
 def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver_kwargs) -> tuple:
     # TODO: test on networks where can_pass_through_zones=False
 
     traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
     incidence_mat = nx.incidence_matrix(graph, oriented=True).todense()
 
-    capacities = np.array(
-        list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32
-    )
+    capacities = np.array(list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32)
     ffts = np.array(
         list(nx.get_edge_attributes(graph, "free_flow_times").values()),
         dtype=np.float32,
@@ -72,8 +70,7 @@ def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver
         ffts[e]
         * (
             flows_e[e]
-            + (rhos[e] / (1 + 1 / mus[e]))
-            * (cp.pos(flows_e[e]) ** (1 + 1 / mus[e]) / capacities[e] ** (1 / mus[e]))
+            + (rhos[e] / (1 + 1 / mus[e])) * (cp.pos(flows_e[e]) ** (1 + 1 / mus[e]) / capacities[e] ** (1 / mus[e]))
         )
         for e in range(len(graph.edges))
     ]
@@ -92,16 +89,12 @@ def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver
     return flows_ei, potentials
 
 
-def get_max_traffic_mat_mul(
-    graph: nx.Graph, traffic_mat: np.ndarray, **solver_kwargs
-) -> Optional[float]:
+def get_max_traffic_mat_mul(graph: nx.Graph, traffic_mat: np.ndarray, **solver_kwargs) -> Optional[float]:
     graph = nx.DiGraph(graph)
     traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
     incidence_mat = nx.incidence_matrix(graph, oriented=True).todense()
 
-    capacities = np.array(
-        list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32
-    )
+    capacities = np.array(list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32)
 
     flow = cp.Variable((len(graph.edges), traffic_mat.shape[0]))
     gamma = cp.Variable()

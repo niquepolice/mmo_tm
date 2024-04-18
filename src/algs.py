@@ -32,14 +32,9 @@ def frank_wolfe(
     relative_gap_log = []
     primal_log = []
 
-    rng = (
-        range(1_000_000)
-        if max_iter == 0
-        else tqdm(range(max_iter), disable=not use_tqdm)
-    )
+    rng = range(1_000_000) if max_iter == 0 else tqdm(range(max_iter), disable=not use_tqdm)
     # steps = []
     for k in rng:
-
         times = model.tau(flows_averaged)
         flows = model.flows_on_shortest(times)
 
@@ -54,9 +49,7 @@ def frank_wolfe(
         else:
             stepsize = 2.0 / (k + 2)
 
-        flows_averaged = (
-            flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
-        )
+        flows_averaged = flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
 
         dual_val = model.dual(times, flows)
         max_dual_func_val = max(max_dual_func_val, dual_val)
@@ -71,9 +64,7 @@ def frank_wolfe(
             optimal = True
             break
 
-        flows_averaged = (
-            flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
-        )
+        flows_averaged = flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
 
     return (
         times,
@@ -122,11 +113,7 @@ def N_conjugate_frank_wolfe(
     relative_gap_log.append((primal - max_dual_func_val) / max_dual_func_val)
     time_log.append(time.time())
 
-    rng = (
-        range(1, 1_000_000)
-        if max_iter == 0
-        else tqdm(range(1, max_iter), disable=not use_tqdm)
-    )
+    rng = range(1, 1_000_000) if max_iter == 0 else tqdm(range(1, max_iter), disable=not use_tqdm)
 
     gamma = 1.0
     d_list = []
@@ -135,7 +122,6 @@ def N_conjugate_frank_wolfe(
     gamma = 1
     epoch = 0
     for k in rng:
-
         if gamma > 0.99999:
             epoch = 0
             S_list = []
@@ -160,9 +146,7 @@ def N_conjugate_frank_wolfe(
             betta_sum = 0
             delta = 0.0001
             for m in range(N, 0, -1):
-                betta[m] = -A[-m] / (
-                    B[-m] * (1 - gamma_list[-m])
-                ) + betta_sum * gamma_list[-m] / (1 - gamma_list[-m])
+                betta[m] = -A[-m] / (B[-m] * (1 - gamma_list[-m])) + betta_sum * gamma_list[-m] / (1 - gamma_list[-m])
                 if betta[m] < 0:
                     betta[m] = 0
                 else:
@@ -257,11 +241,7 @@ def ustm(
 
     max_dual_func_val = -np.inf
 
-    rng = (
-        range(1_000_000)
-        if max_iter == 0
-        else tqdm(range(max_iter), disable=not use_tqdm)
-    )
+    rng = range(1_000_000) if max_iter == 0 else tqdm(range(max_iter), disable=not use_tqdm)
     for k in rng:
         inner_iters_num = 0
         while True:
@@ -271,9 +251,7 @@ def ustm(
             A = A_prev + alpha
 
             y = (alpha * u_prev + A_prev * t_prev) / A
-            func_y, grad_y, primal_var_y = model.func_psigrad_primal(
-                y
-            )  # -model.dual(y, flows_y), -flows_y
+            func_y, grad_y, primal_var_y = model.func_psigrad_primal(y)  # -model.dual(y, flows_y), -flows_y
 
             grad_sum = grad_sum_prev + alpha * grad_y
 
@@ -316,23 +294,16 @@ def ustm(
             primal_var_averaged = primal_var_y
         elif type(primal_var_averaged) == tuple:
             primal_var_averaged = tuple(
-                primal_var_averaged[i] * (1 - gamma) + primal_var_y[i] * gamma
-                for i in range(len(primal_var_averaged))
+                primal_var_averaged[i] * (1 - gamma) + primal_var_y[i] * gamma for i in range(len(primal_var_averaged))
             )
         else:
-            primal_var_averaged = (
-                primal_var_averaged * (1 - gamma) + primal_var_y * gamma
-            )
+            primal_var_averaged = primal_var_averaged * (1 - gamma) + primal_var_y * gamma
 
         # consider every model.flows_on_shortest() call for fair algs comparison
         if type(primal_var_averaged) == tuple:
-            primal, cons = model.primal(*primal_var_averaged), model.capacity_violation(
-                *primal_var_averaged
-            )
+            primal, cons = model.primal(*primal_var_averaged), model.capacity_violation(*primal_var_averaged)
         else:
-            primal, cons = model.primal(primal_var_averaged), model.capacity_violation(
-                primal_var_averaged
-            )
+            primal, cons = model.primal(primal_var_averaged), model.capacity_violation(primal_var_averaged)
         dgap_log += [primal - max_dual_func_val] * (inner_iters_num * 2)
         cons_log += [cons] * (inner_iters_num * 2)
         time_log += [time.time()] * (inner_iters_num * 2)
@@ -376,11 +347,7 @@ def subgd(
 
     max_dual_func_val = -np.inf
 
-    rng = (
-        range(1_000_000)
-        if max_iter == 0
-        else tqdm(range(max_iter), disable=not use_tqdm)
-    )
+    rng = range(1_000_000) if max_iter == 0 else tqdm(range(max_iter), disable=not use_tqdm)
     for k in rng:
         # inlined subgradient calculation with paths set saving
         flows_subgd = model.flows_on_shortest(times)
@@ -427,16 +394,12 @@ def cyclic(
     rng = range(1_000_000) if max_iter == 0 else tqdm(range(max_iter))
 
     traffic_model = model.traffic_model
-    distance_mat_averaged = model.distance_mat(
-        traffic_model.graph.ep.free_flow_times.a.copy()
-    )
+    distance_mat_averaged = model.distance_mat(traffic_model.graph.ep.free_flow_times.a.copy())
 
     optimal = False
     times = None
     for k in rng:
-        traffic_mat, lambda_l, lambda_w = model.solve_entropy_model(
-            distance_mat_averaged
-        )
+        traffic_mat, lambda_l, lambda_w = model.solve_entropy_model(distance_mat_averaged)
 
         traffic_model.set_traffic_mat(traffic_mat)
         # isinstance fails after autoreload
@@ -459,9 +422,7 @@ def cyclic(
                 use_tqdm=False,
             )
         else:
-            assert (
-                False
-            ), f"traffic_model has wrong class name : {type(traffic_model.__class__.__name__)}"
+            assert False, f"traffic_model has wrong class name : {type(traffic_model.__class__.__name__)}"
         if not success:
             warnings.warn(f"Traffic model solver did not converge on big iter {k}", category=RuntimeWarning)
 
@@ -473,10 +434,7 @@ def cyclic(
         # print(f"inner iters={len(inner_dgap_log)}")
         distance_mat = model.distance_mat(times)
 
-        dgap_log.append(
-            model.primal(flows, traffic_mat)
-            - model.dual(times, lambda_l, lambda_w, distance_mat)
-        )
+        dgap_log.append(model.primal(flows, traffic_mat) - model.dual(times, lambda_l, lambda_w, distance_mat))
         cons_log.append(traffic_model.capacity_violation(flows))
         time_log.append(time.time())
 
@@ -484,14 +442,13 @@ def cyclic(
             optimal = True
             break
 
-        distance_mat_averaged = (
-            distance_mat_averaged + distance_mat
-        ) / 2  # average to fix oscillations
+        distance_mat_averaged = (distance_mat_averaged + distance_mat) / 2  # average to fix oscillations
 
     return (
         times,
         flows,
         traffic_mat,
-        (dgap_log, cons_log, np.array(time_log) - time_log[0]) + ((flows_dist_log, corrs_dist_log) if flows_dist_log else ()),
+        (dgap_log, cons_log, np.array(time_log) - time_log[0])
+        + ((flows_dist_log, corrs_dist_log) if flows_dist_log else ()),
         optimal,
     )

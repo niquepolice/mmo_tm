@@ -10,6 +10,7 @@ from src.load_data import (
     read_traffic_mat_transport_networks_tntp,
 )
 
+
 def test_cvxpy_and_fw_sioux_falls_mu_1():
     """CVXPY fails for mu != 1, therefore set mu = 1 here"""
     networks_path = Path("./TransportationNetworks")
@@ -28,7 +29,7 @@ def test_cvxpy_and_fw_sioux_falls_mu_1():
 
     beckmann_model = BeckmannModel(graph, correspondences)
 
-    flows_e = beckmann_model.solve_cvxpy(verbose=True, solver="SCS",  eps_infeas=1e-12)
+    flows_e = beckmann_model.solve_cvxpy(verbose=True, solver="SCS", eps_infeas=1e-12)
     # flows_e = beckmann_model.solve_cvxpy(verbose=True, solver="ECOS", feastol=1e-12)
 
     EPS_ABS = 1000
