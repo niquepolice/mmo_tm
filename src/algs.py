@@ -1,11 +1,12 @@
-from typing import Optional
+import time
 import warnings
+from typing import Optional
 
 import numpy as np
-import time
-from tqdm import tqdm
 from scipy.optimize import minimize_scalar
-from src.models import TrafficModel, BeckmannModel, TwostageModel, Model
+from tqdm import tqdm
+
+from src.models import BeckmannModel, Model, TrafficModel, TwostageModel
 
 
 def frank_wolfe(

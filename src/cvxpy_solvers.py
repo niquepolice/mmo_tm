@@ -1,7 +1,8 @@
+from typing import Optional
+
 import cvxpy as cp
 import networkx as nx
 import numpy as np
-from typing import Optional
 
 
 def solve_min_cost_concurrent_flow(

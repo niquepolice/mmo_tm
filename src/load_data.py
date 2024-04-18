@@ -1,7 +1,8 @@
+from pathlib import Path
+
 import networkx as nx
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 from src.commons import Correspondences
 

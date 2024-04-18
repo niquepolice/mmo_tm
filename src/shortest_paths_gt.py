@@ -1,10 +1,10 @@
 from typing import Union
 
-import numpy as np
-import networkx as nx
 import graph_tool as gt
-from graph_tool.topology import shortest_distance
+import networkx as nx
 import numba
+import numpy as np
+from graph_tool.topology import shortest_distance
 from numba.core import types
 
 from src.commons import Correspondences

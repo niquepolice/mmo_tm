@@ -1,23 +1,21 @@
-from typing import Union, Optional
+from abc import ABC, abstractmethod
+from typing import Optional, Union
 
 import graph_tool as gt
 import networkx as nx
 import numpy as np
-from abc import ABC, abstractmethod
-
-from src.commons import Correspondences
-from src.cvxpy_solvers import solve_min_cost_concurrent_flow, solve_beckmann_model_cp
-from src.newton import newton
-
-from src.shortest_paths_gt import (
-    flows_on_shortest_gt,
-    get_graphtool_graph,
-    get_graph_props,
-    distance_mat_gt,
-)
 
 # import src.sinkhorn_gpu as sinkhorn
 import src.sinkhorn as sinkhorn
+from src.commons import Correspondences
+from src.cvxpy_solvers import solve_beckmann_model_cp, solve_min_cost_concurrent_flow
+from src.newton import newton
+from src.shortest_paths_gt import (
+    distance_mat_gt,
+    flows_on_shortest_gt,
+    get_graph_props,
+    get_graphtool_graph,
+)
 
 
 def maybe_create_and_get_times_ep(graph: gt.Graph, times: np.ndarray) -> gt.EdgePropertyMap:

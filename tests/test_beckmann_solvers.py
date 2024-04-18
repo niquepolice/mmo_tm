@@ -2,13 +2,12 @@ from pathlib import Path
 
 import networkx as nx
 
-from src.models import BeckmannModel
 from src.algs import frank_wolfe
-
 from src.load_data import (
     read_graph_transport_networks_tntp,
     read_traffic_mat_transport_networks_tntp,
 )
+from src.models import BeckmannModel
 
 
 def test_cvxpy_and_fw_sioux_falls_mu_1():

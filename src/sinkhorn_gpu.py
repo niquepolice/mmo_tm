@@ -1,7 +1,8 @@
+from typing import Tuple, Union
+
 import numpy as np
 import torch
 from torch import from_numpy
-from typing import Tuple, Union
 
 
 def d_ij(lambda_l_i: torch.Tensor, lambda_w_j: torch.Tensor, gammaT_ij: torch.Tensor) -> torch.Tensor:
