@@ -137,7 +137,7 @@ class BeckmannModel(TrafficModel):
         return result
 
     def diff_tau(self, flows):
-        fft, mu, rho, caps = get_graph_props(self.graph)
+        fft, mu, rho, caps = self.graph_props
 
         result = np.empty(len(mu))
 
@@ -204,7 +204,7 @@ class BeckmannModel(TrafficModel):
         return flows_subgd - self.tau_inv(times)
 
     def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
-        fft, mu, rho, caps = get_graph_props(self.graph)
+        fft, mu, rho, caps = self.graph_props
 
         # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
 
@@ -218,6 +218,10 @@ class BeckmannModel(TrafficModel):
         result[mask] = fft[mask] * (rho[mask] * x + 1)
 
         return result
+
+    def grad_fei(self, f_ei: np.ndarray) -> np.ndarray:
+        """of the objective in combined problem: gradient of sum of sigmas"""
+        return self.tau(f_ei.sum(axis=1))[:, np.newaxis]
 
     def solve_cvxpy(self, **solver_kwargs) -> np.ndarray:
         """solver_kwargs: arguments for cvxpy's problem.solve()"""

@@ -24,7 +24,7 @@ class SaddleOracle:
         self.gamma = gamma
         self.l, self.w = l, w
         self.n_nodes, self.n_edges = self.incidence_mat.shape
-        self.n_centroids = l.size
+        self.n_centroids = self.traffic_model.correspondences.sources.size
 
     # All arguments are 2d
 

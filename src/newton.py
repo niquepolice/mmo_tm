@@ -23,7 +23,9 @@ def newton(x_0_arr, a_arr, mu_arr, tol=1e-7, max_iter=1000):
             x = x_next
             if np.abs(f(x, x_0, a, mu)) < tol:
                 break
-        # assert it < max_iter - 1
+
+        if it == max_iter - 1:
+            print("warning! max iter in newton: func_val=", np.abs(f(x, x_0, a, mu)), "tol=", tol)
         res[i] = x
     return res
 

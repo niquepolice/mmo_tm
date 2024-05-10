@@ -112,6 +112,8 @@ def get_graphtool_graph(nx_graph: nx.Graph) -> gt.Graph:
 
 
 def get_graph_props(graph: gt.Graph) -> tuple:
+    """It is slow, so dont use it repeatedly.
+    Use model.graph_props instead"""
     fft = graph.ep.free_flow_times.a
     mu = graph.ep.mu.a
     rho = graph.ep.rho.a
