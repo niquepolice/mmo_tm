@@ -7,7 +7,7 @@ def newton(x_0_arr, a_arr, mu_arr, tol=1e-7, max_iter=1000):
     r"""
     Newton method for equation: :math:`x - x_0 + a x^{\mu} = 0, x \geq 0`.
     """
-    res = np.empty(len(x_0_arr), dtype=np.float_)
+    res = np.empty(len(x_0_arr), dtype=np.float64)
     for i in range(len(x_0_arr)):
         x_0 = x_0_arr[i]
         a = a_arr[i]

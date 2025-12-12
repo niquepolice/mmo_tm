@@ -64,7 +64,7 @@ class Model(ABC):
 
 
 class TrafficModel(Model, ABC):
-    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences):
+    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences, use_one_solution_edges: bool = True):
         self.nx_graph = nx_graph
         self.graph = get_graphtool_graph(nx_graph)
         self.correspondences = correspondences
@@ -76,7 +76,13 @@ class TrafficModel(Model, ABC):
         fft_mask = fft == 0
         # the degenerate case : cost does not idepend on the flow
         self.all_cases = mu_mask + rho_mask + fft_mask
-
+        
+        if use_one_solution_edges:
+            A = nx.incidence_matrix(self.nx_graph, oriented=True).todense()
+            row_proj = A.T @ np.linalg.pinv(A @ A.T) @ A
+            row_proj = np.diag(row_proj) / np.linalg.norm(row_proj, axis=0)
+            self.one_solution_edges = row_proj > (1 - 1e-6)
+        
     def flows_on_shortest(
         self, times: np.ndarray, return_distance_mat: bool = False
     ) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
@@ -122,13 +128,32 @@ class TrafficModel(Model, ABC):
 class BeckmannModel(TrafficModel):
     """Dualized on the constraint that flows respect correspondences"""
 
-    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences):
+    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences, mu = None):
         super().__init__(nx_graph, correspondences)
         self.graph_props = get_graph_props(self.graph)  # for some reason, this call is slow, so cache results
+        self.original_mu = np.copy(self.graph_props[1])
+        if not mu is None:
+            fft, m, rho, caps = self.graph_props
+            m[~self.all_cases] = mu
+            self.graph_props = (fft, m, rho, caps)
+            
+    def set_mu(self, mu = None):
+        if isinstance(mu, float):
+            fft, m, rho, caps = self.graph_props
+            m[~self.all_cases] = mu
+            self.graph_props = (fft, m, rho, caps)
+        elif mu is None:
+            self.graph_props = get_graph_props(self.graph)
+        elif isinstance(mu, np.ndarray):
+            self.graph_props = self.graph_props[0], mu, self.graph_props[2], self.graph_props[3]
+            
+    def set_original_mu(self):
+        self.graph_props = self.graph_props[0], np.copy(self.original_mu), self.graph_props[2], self.graph_props[3]
+        
 
     def tau(self, flows):
         fft, mu, rho, caps = self.graph_props
-
+        
         result = np.empty(len(mu))
         result[self.all_cases] = fft[self.all_cases] * (1 + rho[self.all_cases])
         result[~self.all_cases] = fft[~self.all_cases] * (
@@ -203,7 +228,30 @@ class BeckmannModel(TrafficModel):
     def dual_subgradient(self, times: np.ndarray, flows_subgd: np.ndarray) -> np.ndarray:
         return flows_subgd - self.tau_inv(times)
 
-    def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
+    def dual_composite_prox(self, times: np.ndarray, good_indices, stepsize: float) -> np.ndarray:
+        fft, mu, rho, caps = self.graph_props
+        if good_indices is not None:
+            fft = fft[good_indices]
+            mu = mu[good_indices]
+            rho = rho[good_indices]
+            caps = caps[good_indices]
+
+        # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
+
+            mask = (~self.all_cases)[good_indices]  # non-degenerated edges
+        else:
+            mask = (~self.all_cases)
+        x_0 = (times - fft)[mask] / (fft * rho)[mask]
+        a = stepsize * caps[mask] / (fft * rho)[mask]
+
+        x = newton(x_0_arr=x_0, a_arr=a, mu_arr=mu)
+
+        result = fft.copy()
+        result[mask] = fft[mask] * (rho[mask] * x + 1)
+
+        return result
+    
+    def dual_composite_prox_steparray(self, times: np.ndarray, stepsize: np.ndarray) -> np.ndarray:
         fft, mu, rho, caps = self.graph_props
 
         # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
