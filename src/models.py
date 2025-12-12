@@ -228,7 +228,7 @@ class BeckmannModel(TrafficModel):
     def dual_subgradient(self, times: np.ndarray, flows_subgd: np.ndarray) -> np.ndarray:
         return flows_subgd - self.tau_inv(times)
 
-    def dual_composite_prox(self, times: np.ndarray, good_indices, stepsize: float) -> np.ndarray:
+    def dual_composite_prox(self, times: np.ndarray, stepsize: float, good_indices=None) -> np.ndarray:
         fft, mu, rho, caps = self.graph_props
         if good_indices is not None:
             fft = fft[good_indices]
