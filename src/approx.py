@@ -43,7 +43,7 @@ def seq_quad(beckmann_model: BeckmannModel, iters: int, need_log=True, log_max_d
                         [x >= -x_0,
                         A @ x == bt])
 
-        prob.solve(solver="CLARABEL", equilibrate_enable=False, iterative_refinement_enable=False)
+        prob.solve(solver="CLARABEL", warm_start=False, equilibrate_enable=False, iterative_refinement_enable=False)
         x_0 += x.value
 
                 
