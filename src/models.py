@@ -6,10 +6,8 @@ import networkx as nx
 import numpy as np
 
 # import src.sinkhorn_gpu as sinkhorn
-import src.sinkhorn as sinkhorn
 from src.commons import Correspondences
 from src.cvxpy_solvers import solve_beckmann_model_cp, solve_min_cost_concurrent_flow
-from src.newton import newton
 from src.shortest_paths_gt import (
     distance_mat_gt,
     flows_on_shortest_gt,
@@ -229,6 +227,7 @@ class BeckmannModel(TrafficModel):
         return flows_subgd - self.tau_inv(times)
 
     def dual_composite_prox(self, times: np.ndarray, stepsize: float, good_indices=None) -> np.ndarray:
+        from src.newton import newton
         fft, mu, rho, caps = self.graph_props
         if good_indices is not None:
             fft = fft[good_indices]
@@ -252,6 +251,7 @@ class BeckmannModel(TrafficModel):
         return result
     
     def dual_composite_prox_steparray(self, times: np.ndarray, stepsize: np.ndarray) -> np.ndarray:
+        from src.newton import newton
         fft, mu, rho, caps = self.graph_props
 
         # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
@@ -273,8 +273,11 @@ class BeckmannModel(TrafficModel):
 
     def solve_cvxpy(self, **solver_kwargs) -> np.ndarray:
         """solver_kwargs: arguments for cvxpy's problem.solve()"""
+        from src.salim import SaddleOracle
+
+        traffic_lapl = SaddleOracle(self, None, None, None).Bmul(self.correspondences.traffic_mat).T
         flows_ei, potentials = solve_beckmann_model_cp(
-            self.correspondences.traffic_mat, self.nx_graph, **solver_kwargs
+            traffic_lapl, self.nx_graph, **solver_kwargs
         )
         assert flows_ei is not None
 
@@ -316,6 +319,7 @@ class SDModel(TrafficModel):
 
 
 class TwostageModel(Model):
+    import src.sinkhorn as sinkhorn
     def __init__(
         self,
         traffic_model: TrafficModel,

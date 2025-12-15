@@ -226,8 +226,8 @@ def N_conjugate_frank_wolfe(
             break
 
     return (
-        list(np.astype(t, float)),
-        list(np.astype(flows, float)),
+        list(t.astype(float)),
+        list(flows.astype(float)),
         (
             (dgap_log,
             time_log,

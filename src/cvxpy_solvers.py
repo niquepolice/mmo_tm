@@ -48,10 +48,9 @@ def solve_entropy_model_cp(
     return d_ij.value
 
 
-def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver_kwargs) -> tuple:
+def solve_beckmann_model_cp(traffic_lapl: np.ndarray, graph: nx.DiGraph, **solver_kwargs) -> tuple:
     # TODO: test on networks where can_pass_through_zones=False
 
-    traffic_lapl = np.diag(traffic_mat.sum(axis=1)) - traffic_mat
     incidence_mat = nx.incidence_matrix(graph, oriented=True).todense()
 
     capacities = np.array(list(nx.get_edge_attributes(graph, "capacities").values()), dtype=np.float32)
@@ -61,8 +60,12 @@ def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver
     )
     rhos = np.array(list(nx.get_edge_attributes(graph, "rho").values()), dtype=np.float32)
     mus = np.array(list(nx.get_edge_attributes(graph, "mu").values()), dtype=np.float32)
+    mus_inv = np.round(1 / mus).astype(int)
+    
+    assert np.allclose(mus_inv, 1 / mus), "now only works for integer 1/mu s"
+                
 
-    flows_ei = cp.Variable((len(graph.edges), traffic_mat.shape[0]), nonneg=True)
+    flows_ei = cp.Variable((len(graph.edges), traffic_lapl.shape[1]), nonneg=True)
     flows_e = cp.sum(flows_ei, axis=1)
     # flows_e = cp.Variable(len(graph.edges), nonneg=True)
 
@@ -71,7 +74,7 @@ def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver
         ffts[e]
         * (
             flows_e[e]
-            + (rhos[e] / (1 + 1 / mus[e])) * (cp.pos(flows_e[e]) ** (1 + 1 / mus[e]) / capacities[e] ** (1 / mus[e]))
+            + (rhos[e] / (1 + mus_inv[e])) * (cp.pos(flows_e[e]) ** (1 + mus_inv[e]) / capacities[e] ** (mus_inv[e]))
         )
         for e in range(len(graph.edges))
     ]
@@ -81,7 +84,7 @@ def solve_beckmann_model_cp(traffic_mat: np.ndarray, graph: nx.DiGraph, **solver
     prob = cp.Problem(
         objective,
         [
-            (incidence_mat @ flows_ei).T == -traffic_lapl,
+            incidence_mat @ flows_ei == -traffic_lapl,
         ],
     )
     prob.solve(**solver_kwargs)

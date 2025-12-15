@@ -11,6 +11,7 @@ import cvxpy as cp
 def seq_quad(beckmann_model: BeckmannModel, iters: int, need_log=True, log_max_diff = False, return_full=False, solution_flows: Optional[np.ndarray] = None, x_0_start=None, start_time=None):
     A = nx.incidence_matrix(beckmann_model.nx_graph, oriented=True).todense()
     Ld = SaddleOracle(beckmann_model, None, None, None).Bmul(beckmann_model.correspondences.traffic_mat).T
+    print(A.shape, Ld.shape)
 
     _, n_edges = A.shape
 
@@ -36,6 +37,12 @@ def seq_quad(beckmann_model: BeckmannModel, iters: int, need_log=True, log_max_d
     for i in pbar:
         grad = beckmann_model.tau(np.maximum(x_0.sum(axis=1), 0))
         hess = 0.5 * beckmann_model.diff_tau(np.maximum(x_0.sum(axis=1), 0))
+
+        # A (x + x_0) + Ld = 0
+        # A x_0 + Ld = 0
+
+        # A x = 0
+
         bt = -A @ x_0 - Ld
 
         x.value = np.maximum(-x_0, 0)
