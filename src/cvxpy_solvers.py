@@ -74,7 +74,7 @@ def solve_beckmann_model_cp(traffic_lapl: np.ndarray, graph: nx.DiGraph, **solve
         ffts[e]
         * (
             flows_e[e]
-            + (rhos[e] / (1 + mus_inv[e])) * (cp.pos(flows_e[e]) ** (1 + mus_inv[e]) / capacities[e] ** (mus_inv[e]))
+            + (rhos[e] / (1 + mus_inv[e])) * (cp.pos(flows_e[e]) ** int(1 + mus_inv[e]) / capacities[e] ** int(mus_inv[e]))
         )
         for e in range(len(graph.edges))
     ]
