@@ -3,15 +3,16 @@ from numba import njit
 
 
 @njit
-def newton(x_0_arr, a_arr, mu_arr, tol=1e-7, max_iter=1000):
+def newton(x_0_arr, a_arr, mu_arr, xd, tol=1e-7, max_iter=1000):
     r"""
     Newton method for equation: :math:`x - x_0 + a x^{\mu} = 0, x \geq 0`.
     """
-    res = np.empty(len(x_0_arr), dtype=np.float64)
+    res = np.copy(xd).astype(np.float64)
     for i in range(len(x_0_arr)):
         x_0 = x_0_arr[i]
         a = a_arr[i]
         mu = mu_arr[i]
+        assert mu <= 10000, f"{mu}"
         if x_0 <= 0:
             res[i] = 0
             continue
@@ -33,7 +34,6 @@ def newton(x_0_arr, a_arr, mu_arr, tol=1e-7, max_iter=1000):
 @njit
 def f(x, x_0, a, mu):
     return x - x_0 + a * x**mu
-
 
 @njit
 def der_f(x, x_0, a, mu):

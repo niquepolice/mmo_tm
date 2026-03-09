@@ -6,6 +6,7 @@ import numba
 import numpy as np
 from graph_tool.topology import shortest_distance
 from numba.core import types
+import torch
 
 from src.commons import Correspondences
 
@@ -111,12 +112,17 @@ def get_graphtool_graph(nx_graph: nx.Graph) -> gt.Graph:
     return gt_graph
 
 
-def get_graph_props(graph: gt.Graph) -> tuple:
+def get_graph_props(graph: gt.Graph, use_torch: bool = False) -> tuple:
     """It is slow, so dont use it repeatedly.
     Use model.graph_props instead"""
     fft = graph.ep.free_flow_times.a
     mu = graph.ep.mu.a
     rho = graph.ep.rho.a
     caps = graph.ep.capacities.a
+    if use_torch:
+        fft = torch.from_numpy(fft)
+        mu = torch.from_numpy(mu)
+        rho = torch.from_numpy(rho)
+        caps = torch.from_numpy(caps)
 
     return fft, mu, rho, caps

@@ -10,7 +10,7 @@ from src.models import BeckmannModel, Model, TrafficModel, TwostageModel
 
 
 def frank_wolfe(
-    model: BeckmannModel,
+    model,
     eps_abs: float,
     max_iter: int = 10000,  # 0 for no limit (some big number)
     times_start: Optional[np.ndarray] = None,
@@ -19,7 +19,8 @@ def frank_wolfe(
     linesearch: bool = False,
     log_period=500,
     log_max_diff=False,
-    solution_flows: Optional[np.ndarray] = None
+    solution_flows: Optional[np.ndarray] = None,
+    time_limit = 1_000_000
 ) -> tuple:
     """One iteration == 1 shortest paths call"""
 
@@ -80,6 +81,10 @@ def frank_wolfe(
             break
 
         flows_averaged = flows if k == 0 else stepsize * flows + (1 - stepsize) * flows_averaged
+        
+        if k % 250 == 0:
+            if time.time() - start > time_limit:
+                break
 
     return (
         list(np.astype(times, float)),
@@ -95,7 +100,7 @@ def frank_wolfe(
 
 
 def N_conjugate_frank_wolfe(
-    model: BeckmannModel,
+    model,
     eps_abs: float,
     max_iter: int = 100,  # 0 for no limit (some big number)
     times_start: Optional[np.ndarray] = None,
@@ -105,7 +110,8 @@ def N_conjugate_frank_wolfe(
     cnt_conjugates: int = 3,
     log_period=500,
     log_max_diff = False,
-    solution_flows: Optional[np.ndarray] = None
+    solution_flows: Optional[np.ndarray] = None,
+    time_limit = 1_000_000
 ) -> tuple:
     """One iteration == 1 shortest paths call"""
 
@@ -224,6 +230,10 @@ def N_conjugate_frank_wolfe(
         if stop_by_crit and last_dgap <= eps_abs:
             optimal = True
             break
+        
+        if k % 250 == 0:
+            if time.time() - start > time_limit:
+                break
 
     return (
         list(np.astype(t, float)),

@@ -4,12 +4,15 @@ from typing import Optional, Union
 import graph_tool as gt
 import networkx as nx
 import numpy as np
+import juliacall
+import torch
 
 # import src.sinkhorn_gpu as sinkhorn
 import src.sinkhorn as sinkhorn
 from src.commons import Correspondences
 from src.cvxpy_solvers import solve_beckmann_model_cp, solve_min_cost_concurrent_flow
 from src.newton import newton
+from src.newton_torch import newton_torch
 from src.shortest_paths_gt import (
     distance_mat_gt,
     flows_on_shortest_gt,
@@ -71,11 +74,13 @@ class TrafficModel(Model, ABC):
 
         fft, mu, rho, caps = get_graph_props(self.graph)
 
-        mu_mask = mu == np.inf
-        rho_mask = rho == 0
-        fft_mask = fft == 0
+        mu_mask = ~np.isfinite(mu)
+        print(mu_mask)
+        rho_mask = rho < 1e-8
+        print(np.any(rho > 1e-8))
         # the degenerate case : cost does not idepend on the flow
-        self.all_cases = mu_mask + rho_mask + fft_mask
+        self.all_cases = mu_mask + rho_mask
+        print(self.all_cases)
         
         if use_one_solution_edges:
             A = nx.incidence_matrix(self.nx_graph, oriented=True).todense()
@@ -128,10 +133,11 @@ class TrafficModel(Model, ABC):
 class BeckmannModel(TrafficModel):
     """Dualized on the constraint that flows respect correspondences"""
 
-    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences, mu = None):
+    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences, mu = None, use_torch: bool = False):
         super().__init__(nx_graph, correspondences)
-        self.graph_props = get_graph_props(self.graph)  # for some reason, this call is slow, so cache results
+        self.graph_props = get_graph_props(self.graph, use_torch=use_torch)  # for some reason, this call is slow, so cache results
         self.original_mu = np.copy(self.graph_props[1])
+        self.use_torch = use_torch
         if not mu is None:
             fft, m, rho, caps = self.graph_props
             m[~self.all_cases] = mu
@@ -143,18 +149,26 @@ class BeckmannModel(TrafficModel):
             m[~self.all_cases] = mu
             self.graph_props = (fft, m, rho, caps)
         elif mu is None:
-            self.graph_props = get_graph_props(self.graph)
+            self.graph_props = get_graph_props(self.graph, use_torch=self.use_torch)
         elif isinstance(mu, np.ndarray):
             self.graph_props = self.graph_props[0], mu, self.graph_props[2], self.graph_props[3]
             
     def set_original_mu(self):
-        self.graph_props = self.graph_props[0], np.copy(self.original_mu), self.graph_props[2], self.graph_props[3]
+        if not self.use_torch:
+            self.graph_props = self.graph_props[0], np.copy(self.original_mu), self.graph_props[2], self.graph_props[3]
+        else:
+            self.graph_props = self.graph_props[0], torch.clone(self.original_mu), self.graph_props[2], self.graph_props[3]
+
         
 
     def tau(self, flows):
         fft, mu, rho, caps = self.graph_props
         
-        result = np.empty(len(mu))
+        if not self.use_torch:
+            result = np.empty(len(mu))
+        else:
+            print(type(flows))
+            result = torch.empty(len(mu), dtype=flows.dtype)
         result[self.all_cases] = fft[self.all_cases] * (1 + rho[self.all_cases])
         result[~self.all_cases] = fft[~self.all_cases] * (
             1 + rho[~self.all_cases] * (flows[~self.all_cases] / caps[~self.all_cases]) ** (1 / mu[~self.all_cases])
@@ -164,7 +178,10 @@ class BeckmannModel(TrafficModel):
     def diff_tau(self, flows):
         fft, mu, rho, caps = self.graph_props
 
-        result = np.empty(len(mu))
+        if not self.use_torch:
+            result = np.empty(len(mu))
+        else:
+            result = torch.empty(len(mu), dtype=flows.dtype)
 
         result[self.all_cases] = 0
         result[~self.all_cases] = (
@@ -178,7 +195,10 @@ class BeckmannModel(TrafficModel):
 
     def tau_inv(self, times):
         fft, mu, rho, caps = self.graph_props
-        result = np.empty(len(mu))
+        if not self.use_torch:
+            result = np.empty(len(mu))
+        else:
+            result = torch.empty(len(mu), dtype=times.dtype)
 
         result[self.all_cases] = 0
         result[~self.all_cases] = (
@@ -189,7 +209,10 @@ class BeckmannModel(TrafficModel):
 
     def sigma(self, flows) -> np.ndarray:
         fft, mu, rho, caps = self.graph_props
-        result = np.empty(len(mu))
+        if not self.use_torch:
+            result = np.empty(len(mu))
+        else:
+            result = torch.empty(len(mu), dtype=flows.dtype)
 
         result[self.all_cases] = fft[self.all_cases] * flows[self.all_cases] * (1 + rho[self.all_cases])
         result[~self.all_cases] = (
@@ -206,9 +229,12 @@ class BeckmannModel(TrafficModel):
     def sigma_star(self, times) -> np.ndarray:
         fft, mu, rho, caps = self.graph_props
 
-        dt = np.maximum(0, times - fft)
-
-        result = np.empty(len(mu))
+        if not self.use_torch:
+            dt = np.maximum(0, times - fft)
+            result = np.empty(len(mu))
+        else:
+            dt = torch.maximum(0, times - fft)
+            result = torch.empty(len(mu), dtype=times.dtype)
 
         result[self.all_cases] = 0
         result[~self.all_cases] = (
@@ -220,53 +246,124 @@ class BeckmannModel(TrafficModel):
         return result
 
     def primal(self, flows: np.ndarray) -> float:
-        return float(self.sigma(flows).sum())
+        if not self.use_torch:
+            return float(self.sigma(flows).sum())
+        else:
+            return self.sigma(flows).sum().item()
 
     def composite(self, times: np.ndarray) -> float:
-        return self.sigma_star(times).sum()
+        if not self.use_torch:
+            return float(self.sigma_star(times).sum())
+        else:
+            return self.sigma_star(times).sum().item()
+
+    def dual_subgradient(self, times, flows_subgd) -> np.ndarray:
+        return flows_subgd - self.tau_inv(times)
+
+    def dual_composite_prox(self, times, stepsize: float, to_torch: bool = False) -> np.ndarray:
+        fft, mu, rho, caps = self.graph_props
+        mask = (~self.all_cases)
+        
+        x_0 = (times - fft)[mask] / (fft * rho)[mask]
+        a = stepsize * caps[mask] / (fft * rho)[mask]
+
+        if not to_torch:
+            x = newton(x_0_arr=x_0, a_arr=a, mu_arr=mu[mask], xd=np.zeros_like(x_0))
+        else:
+            x = newton_torch(x_0_arr=x_0, a_arr=a, mu_arr=mu[mask], xd=np.zeros_like(x_0))
+
+        if not self.use_torch:
+            result = fft.copy()
+        else:
+            result = torch.clone(fft)
+        result[mask] = fft[mask] * (rho[mask] * x + 1)
+
+        return result
+
+    def grad_fei(self, f_ei: np.ndarray) -> np.ndarray:
+        """of the objective in combined problem: gradient of sum of sigmas"""
+        if not self.use_torch:
+            return self.tau(f_ei.sum(axis=1))[:, np.newaxis]
+        else:
+            return self.tau(f_ei.sum(dim=1))[:, None]
+
+    def solve_cvxpy(self, **solver_kwargs) -> np.ndarray:
+        """solver_kwargs: arguments for cvxpy's problem.solve()"""
+        flows_ei, potentials = solve_beckmann_model_cp(
+            self.correspondences.traffic_mat, self.nx_graph, **solver_kwargs
+        )
+        assert flows_ei is not None
+
+        return flows_ei.sum(axis=1)
+
+class TelecomModel(TrafficModel):
+    """Dualized on the constraint that flows respect correspondences"""
+
+    def __init__(self, nx_graph: nx.DiGraph, correspondences: Correspondences, mu = None):
+        super().__init__(nx_graph, correspondences)
+        self.graph_props = get_graph_props(self.graph)  # for some reason, this call is slow, so cache results
+        self.original_mu = np.full_like(self.graph_props[1], -0.5)
+        self.sqrt_fft = np.sqrt(self.graph_props[0])
+        if not mu is None:
+            fft, m, rho, caps = self.graph_props
+            m[~self.all_cases] = mu
+            self.graph_props = (fft, m, rho, caps)        
+
+    def tau(self, flows):
+        fft, mu, rho, caps = self.graph_props
+        result = fft / (1e-8 + (1.0 - flows / caps)**2)
+        result[flows / caps >= 1] = 1e8
+        return result
+    
+
+    def diff_tau(self, flows):
+        fft, mu, rho, caps = self.graph_props
+        result = fft / (1e-8 + caps * (1.0 - flows / caps)**3)
+        result[flows / caps >= 1] = 1e8
+        return result
+
+    def tau_inv(self, times):
+        fft, mu, rho, caps = self.graph_props
+        result = caps * (1.0 - np.sqrt(fft / times))
+        return result
+
+    def sigma(self, flows) -> np.ndarray:
+        fft, mu, rho, caps = self.graph_props
+        return (
+            np.inf
+            if np.any(flows >= caps)
+            else fft * (np.multiply(caps, np.reciprocal((1 - flows / caps)) - 1))
+        )
+
+    def sigma_star(self, times) -> np.ndarray:
+        fft, mu, rho, caps = self.graph_props
+
+        return caps * (np.sqrt(times) - self.sqrt_fft)**2
+
+    def primal(self, flows: np.ndarray) -> float:
+        sigm = self.sigma(flows)
+        return sigm if isinstance(sigm, float) else sigm.sum()
+
+    def composite(self, times: np.ndarray) -> float:
+        sigm = self.sigma(times)
+        return sigm if isinstance(sigm, float) else sigm.sum()
 
     def dual_subgradient(self, times: np.ndarray, flows_subgd: np.ndarray) -> np.ndarray:
         return flows_subgd - self.tau_inv(times)
 
-    def dual_composite_prox(self, times: np.ndarray, stepsize: float, good_indices=None) -> np.ndarray:
+    def dual_composite_prox(self, times: np.ndarray, stepsize: float) -> np.ndarray:
         fft, mu, rho, caps = self.graph_props
-        if good_indices is not None:
-            fft = fft[good_indices]
-            mu = mu[good_indices]
-            rho = rho[good_indices]
-            caps = caps[good_indices]
+        mask = (~self.all_cases)
+        x_0 = times[mask] - stepsize * caps[mask]
+        a = -stepsize * caps[mask] * self.sqrt_fft[mask]
 
-        # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
-
-            mask = (~self.all_cases)[good_indices]  # non-degenerated edges
-        else:
-            mask = (~self.all_cases)
-        x_0 = (times - fft)[mask] / (fft * rho)[mask]
-        a = stepsize * caps[mask] / (fft * rho)[mask]
-
-        x = newton(x_0_arr=x_0, a_arr=a, mu_arr=mu)
+        x = newton(x_0_arr=x_0, a_arr=a, mu_arr=self.original_mu, xd=fft)
 
         result = fft.copy()
-        result[mask] = fft[mask] * (rho[mask] * x + 1)
+        result[mask] = x
 
         return result
     
-    def dual_composite_prox_steparray(self, times: np.ndarray, stepsize: np.ndarray) -> np.ndarray:
-        fft, mu, rho, caps = self.graph_props
-
-        # rewrite t - t_0 + stepsize * tau_inv(t) = 0 as x - x_0 + a x^mu = 0
-
-        mask = ~self.all_cases  # non-degenerated edges
-        x_0 = (times - fft)[mask] / (fft * rho)[mask]
-        a = stepsize * caps[mask] / (fft * rho)[mask]
-
-        x = newton(x_0_arr=x_0, a_arr=a, mu_arr=mu)
-
-        result = fft.copy()
-        result[mask] = fft[mask] * (rho[mask] * x + 1)
-
-        return result
-
     def grad_fei(self, f_ei: np.ndarray) -> np.ndarray:
         """of the objective in combined problem: gradient of sum of sigmas"""
         return self.tau(f_ei.sum(axis=1))[:, np.newaxis]
@@ -279,7 +376,6 @@ class BeckmannModel(TrafficModel):
         assert flows_ei is not None
 
         return flows_ei.sum(axis=1)
-
 
 class SDModel(TrafficModel):
     """Dualized on the capacity constraints"""

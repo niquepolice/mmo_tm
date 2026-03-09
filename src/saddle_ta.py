@@ -3,17 +3,22 @@ import time
 import numpy as np
 from tqdm import tqdm
 from typing import Optional
+import torch
 
 from src.models import BeckmannModel
 from src.salim import SaddleOracle
 from scipy.optimize import minimize_scalar
 
 
-def opt_metric(f, y, grad_f, A):
+def opt_metric(f, y, grad_f, A, use_torch: bool = False):
     lagrange_grad_f = A.T @ y + grad_f
     tol = 1e-4
-    lagrange_grad_f[f < tol] = np.minimum(0, lagrange_grad_f[f < tol])
-    return np.linalg.norm(lagrange_grad_f)
+    if not use_torch:
+        lagrange_grad_f[f < tol] = np.minimum(0, lagrange_grad_f[f < tol])
+        return np.linalg.norm(lagrange_grad_f)
+    else:
+        lagrange_grad_f[f < tol] = torch.minimum(0, lagrange_grad_f[f < tol])
+        return torch.norm(lagrange_grad_f).item()
 
 
 def salim_ta(beckmann_model: BeckmannModel, iters: int, mu: float, L: float, lam1: float, lam2: float, log_period=500, log_max_diff = False, solution_flows: Optional[np.ndarray] = None):
@@ -65,7 +70,7 @@ def salim_ta(beckmann_model: BeckmannModel, iters: int, mu: float, L: float, lam
 
     return (list(np.astype(x.sum(axis=1), float)), log_period) + ((cons_log, opt_log, times, primal_log) + ((flows_dist_log,) if flows_dist_log else ()) if log_period > 0 else ())                
 
-def chambolle_pock_ta(beckmann_model: BeckmannModel, iters: int, beta_ts: float = 0.018, log_period=500, log_max_diff = False, return_full=False, solution_flows: Optional[np.ndarray] = None):
+def chambolle_pock_ta(beckmann_model: BeckmannModel, iters: int, beta_ts: float = 0.018, log_period=500, log_max_diff = False, return_full=False, solution_flows: Optional[np.ndarray] = None, time_limit = 1_000_000):
     A = nx.incidence_matrix(beckmann_model.nx_graph, oriented=True).todense()
     Ld = SaddleOracle(beckmann_model, None, None, None).Bmul(beckmann_model.correspondences.traffic_mat).T
 
@@ -80,10 +85,19 @@ def chambolle_pock_ta(beckmann_model: BeckmannModel, iters: int, beta_ts: float 
 
     nu = 0.99 * 64 / lam1
     gamma = 0.98 * 0.99 / (nu * lam1**2)
+    
+    if beckmann_model.use_torch:
+        A = torch.from_numpy(A)
+        Ld = torch.from_numpy(Ld)
 
-    f_bar = f = np.zeros((n_edges, Ld.shape[1]))
-    y = np.zeros(Ld.shape)
-    z = np.zeros(f.shape[0])
+    if not beckmann_model.use_torch:
+        f_bar = f = np.zeros((n_edges, Ld.shape[1]))
+        y = np.zeros(Ld.shape)
+        z = np.zeros(f.shape[0])
+    else:
+        f_bar = f = torch.zeros((n_edges, Ld.shape[1]))
+        y = torch.zeros(Ld.shape)
+        z = torch.zeros(f.shape[0])
         
     need_log = log_period > 0
     times = []
@@ -99,10 +113,16 @@ def chambolle_pock_ta(beckmann_model: BeckmannModel, iters: int, beta_ts: float 
         theta = 1 # / np.sqrt(1 + 2 * beta_ts * nu)\
         # print(i)
         
-        y = y + gamma * (A @ f_bar + Ld)
-        z = beckmann_model.dual_composite_prox(z + gamma * f_bar.sum(axis=1), stepsize=gamma)
-        f_prev = f
-        f = np.maximum(0, f - nu * (A.T @ y + z[:, np.newaxis]))
+        if not beckmann_model.use_torch:
+            y = y + gamma * (A @ f_bar + Ld)
+            z = beckmann_model.dual_composite_prox(z + gamma * f_bar.sum(axis=1), stepsize=gamma)
+            f_prev = f
+            f = np.maximum(0, f - nu * (A.T @ y + z[:, np.newaxis]))
+        else:
+            y = y + gamma * (A @ f_bar + Ld)
+            z = beckmann_model.dual_composite_prox(z + gamma * f_bar.sum(dim=1), stepsize=gamma)
+            f_prev = f
+            f = np.maximum(0, f - nu * (A.T @ y + z[:, None]))
                        
         f_bar = f + theta * (f - f_prev)
             
@@ -115,12 +135,19 @@ def chambolle_pock_ta(beckmann_model: BeckmannModel, iters: int, beta_ts: float 
                 gamma /= (1 + beta_ts)
                 
         if need_log and i % log_period == 0:
-            cons_log.append(float(np.linalg.norm(A.T @ (AATi @ (A @ f + Ld)))))
+            if beckmann_model.use_torch:
+                cons_log.append(float(torch.norm(A.T @ (AATi @ (A @ f + Ld))).item()))
+                primal_log.append(float(beckmann_model.primal(f.sum(dim=1))))
+            else:
+                cons_log.append(float(np.linalg.norm(A.T @ (AATi @ (A @ f + Ld)))))
+                primal_log.append(float(beckmann_model.primal(f.sum(axis=1))))
             opt_log.append(float(opt_metric(f, y, 0, A)))
             times.append(time.time() - start)
-            primal_log.append(float(beckmann_model.primal(f.sum(axis=1))))
             if solution_flows is not None:
-                flow_dist = np.linalg.norm(f.sum(axis=1) - solution_flows) if not log_max_diff else np.max(np.abs(f.sum(axis=1) - solution_flows))
+                if beckmann_model.use_torch:
+                    flow_dist = torch.norm(f.sum(dim=1) - solution_flows) if not log_max_diff else torch.max(np.abs(f.sum(dim=1) - solution_flows))
+                else:
+                    flow_dist = np.linalg.norm(f.sum(axis=1) - solution_flows) if not log_max_diff else np.max(np.abs(f.sum(axis=1) - solution_flows))
                 flows_dist_log.append(float(flow_dist))
 
         if i % 1000 == 0 and need_log:
@@ -129,9 +156,16 @@ def chambolle_pock_ta(beckmann_model: BeckmannModel, iters: int, beta_ts: float 
                 postfix["sol dist"] = flows_dist_log[-1]
             postfix["primal"] = primal_log[-1]
             pbar.set_postfix(postfix)
+            
+        if i % 1000 == 0:
+            if time.time() - start > time_limit:
+                break
     
-    solution = list(np.astype(f.sum(axis=1), float)) if not return_full else f
+    if beckmann_model.use_torch:
+        solution = list(torch.sum(f, dim=1).cpu().detach().numpy()) if not return_full else f
+    else:
+        solution = list(np.astype(f.sum(axis=1), float)) if not return_full else f
     
     
 
-    return (solution, log_period) + ((cons_log, opt_log, times, primal_log, start) + ((flows_dist_log,) if flows_dist_log else ()) if log_period > 0 else ())
+    return (solution, i) + ((cons_log, opt_log, times, primal_log, start) + ((flows_dist_log,) if flows_dist_log else ()) if log_period > 0 else ())
