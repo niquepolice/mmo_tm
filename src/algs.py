@@ -7,6 +7,141 @@ from scipy.optimize import minimize_scalar
 from tqdm import tqdm
 
 from src.models import BeckmannModel, Model, TrafficModel, TwostageModel
+from src.shortest_paths_gpu import cugraph_is_available, flows_on_shortest_gpu
+
+try:
+    import cupy as cp
+except Exception:
+    cp = None
+
+
+def _tau_cp(flows, fft, mu, rho, caps, all_cases):
+    result = cp.empty_like(flows, dtype=cp.float64)
+    result[all_cases] = fft[all_cases] * (1.0 + rho[all_cases])
+    result[~all_cases] = fft[~all_cases] * (
+        1.0 + rho[~all_cases] * (flows[~all_cases] / caps[~all_cases]) ** (1.0 / mu[~all_cases])
+    )
+    return result
+
+
+def _sigma_cp(flows, fft, mu, rho, caps, all_cases):
+    result = cp.empty_like(flows, dtype=cp.float64)
+    result[all_cases] = fft[all_cases] * flows[all_cases] * (1.0 + rho[all_cases])
+    result[~all_cases] = (
+        fft[~all_cases]
+        * flows[~all_cases]
+        * (
+            1.0
+            + (rho[~all_cases] / (1.0 + 1.0 / mu[~all_cases]))
+            * (flows[~all_cases] / caps[~all_cases]) ** (1.0 / mu[~all_cases])
+        )
+    )
+    return result
+
+
+def _sigma_star_cp(times, fft, mu, rho, caps, all_cases):
+    dt = cp.maximum(0.0, times - fft)
+    result = cp.empty_like(times, dtype=cp.float64)
+    result[all_cases] = 0.0
+    result[~all_cases] = (
+        caps[~all_cases]
+        * (dt[~all_cases] / (fft[~all_cases] * rho[~all_cases])) ** mu[~all_cases]
+        * dt[~all_cases]
+        / (1.0 + mu[~all_cases])
+    )
+    return result
+
+
+def frank_wolfe_gpu_cugraph(
+    model: BeckmannModel,
+    eps_abs: float,
+    max_iter: int = 10000,
+    times_start: Optional[np.ndarray] = None,
+    stop_by_crit: bool = True,
+    use_tqdm: bool = True,
+    log_period: int = 500,
+    log_max_diff: bool = False,
+    solution_flows: Optional[np.ndarray] = None,
+    time_limit: float = 1_000_000,
+) -> tuple:
+    if cp is None or not cugraph_is_available():
+        raise RuntimeError("cupy/cugraph are required for frank_wolfe_gpu_cugraph")
+    if model.shortest_paths_backend != "cugraph":
+        raise ValueError("Model must use shortest_paths_backend='cugraph'")
+    if model.cugraph_state is None:
+        raise ValueError("Model has no initialized cugraph_state")
+    if model.use_torch:
+        raise ValueError("frank_wolfe_gpu_cugraph supports non-torch BeckmannModel only")
+
+    fft_np, mu_np, rho_np, caps_np = model.graph_props
+    fft = cp.asarray(fft_np, dtype=cp.float64)
+    mu = cp.asarray(mu_np, dtype=cp.float64)
+    rho = cp.asarray(rho_np, dtype=cp.float64)
+    caps = cp.asarray(caps_np, dtype=cp.float64)
+    all_cases = cp.asarray(model.all_cases)
+
+    if times_start is None:
+        times_cp = cp.asarray(model.graph.ep.free_flow_times.a, dtype=cp.float64)
+    else:
+        times_cp = cp.asarray(times_start, dtype=cp.float64)
+    flows_averaged = flows_on_shortest_gpu(
+        model.cugraph_state,
+        model.correspondences,
+        times_cp,
+        return_cupy=True,
+    )
+
+    max_dual_func_val = -np.inf
+    dgap_log, time_log, relative_gap_log, primal_log, flows_dist_log = [], [], [], [], []
+    solution_flows_cp = cp.asarray(solution_flows, dtype=cp.float64) if solution_flows is not None else None
+    start = time.time()
+    optimal = False
+
+    rng = range(1_000_000) if max_iter == 0 else tqdm(range(max_iter), disable=not use_tqdm)
+    for k in rng:
+        times_cp = _tau_cp(flows_averaged, fft, mu, rho, caps, all_cases)
+        flows = flows_on_shortest_gpu(
+            model.cugraph_state,
+            model.correspondences,
+            times_cp,
+            return_cupy=True,
+        )
+        stepsize = 2.0 / (k + 2)
+        flows_averaged = flows if k == 0 else stepsize * flows + (1.0 - stepsize) * flows_averaged
+
+        if (log_period > 0 and k % log_period == 0) or stop_by_crit:
+            dual_val = float((times_cp @ flows - _sigma_star_cp(times_cp, fft, mu, rho, caps, all_cases).sum()).item())
+            max_dual_func_val = max(max_dual_func_val, dual_val)
+            primal = float(_sigma_cp(flows_averaged, fft, mu, rho, caps, all_cases).sum().item())
+            last_dgap = primal - max_dual_func_val
+
+        if log_period > 0 and k % log_period == 0:
+            primal_log.append(primal)
+            dgap_log.append(last_dgap)
+            relative_gap_log.append(np.inf if max_dual_func_val == 0 else last_dgap / max_dual_func_val)
+            time_log.append(time.time() - start)
+            if solution_flows_cp is not None:
+                flow_dist = cp.linalg.norm(flows - solution_flows_cp)
+                if log_max_diff:
+                    flow_dist = cp.max(cp.abs(flows - solution_flows_cp))
+                flows_dist_log.append(float(flow_dist.item()))
+
+        if stop_by_crit and last_dgap <= eps_abs:
+            optimal = True
+            break
+        if k % 250 == 0 and (time.time() - start > time_limit):
+            break
+
+    return (
+        list(cp.asnumpy(times_cp).astype(float)),
+        list(cp.asnumpy(flows_averaged).astype(float)),
+        (
+            (dgap_log, time_log, primal_log, relative_gap_log) + ((flows_dist_log,) if flows_dist_log else ())
+            if log_period > 0
+            else ()
+        ),
+        optimal,
+    )
 
 
 def frank_wolfe(
@@ -70,7 +205,7 @@ def frank_wolfe(
         if log_period > 0 and k % log_period == 0:
             primal_log.append(primal)
             dgap_log.append(last_dgap)
-            relative_gap_log.append(last_dgap / max_dual_func_val)
+            relative_gap_log.append(np.inf if max_dual_func_val == 0 else last_dgap / max_dual_func_val)
             time_log.append(time.time() - start)
             if solution_flows is not None:
                 flow_dist = np.linalg.norm(flows - solution_flows) if not log_max_diff else np.max(np.abs(flows - solution_flows))
@@ -87,8 +222,8 @@ def frank_wolfe(
                 break
 
     return (
-        list(np.astype(times, float)),
-        list(np.astype(flows_averaged, float)),
+        list(times.astype(float)),
+        list(flows_averaged.astype(float)),
         (
             (dgap_log,
             time_log,
@@ -221,7 +356,7 @@ def N_conjugate_frank_wolfe(
         if log_period > 0 and k % log_period == 0:
             primal_log.append(primal)
             dgap_log.append(last_dgap)
-            relative_gap_log.append(last_dgap / max_dual_func_val)
+            relative_gap_log.append(np.inf if max_dual_func_val == 0 else last_dgap / max_dual_func_val)
             time_log.append(time.time() - start)
             if solution_flows is not None:
                 flow_dist = np.linalg.norm(flows - solution_flows) if not log_max_diff else np.max(np.abs(flows - solution_flows))
@@ -236,8 +371,8 @@ def N_conjugate_frank_wolfe(
                 break
 
     return (
-        list(np.astype(t, float)),
-        list(np.astype(flows, float)),
+        list(t.astype(float)),
+        list(flows.astype(float)),
         (
             (dgap_log,
             time_log,
@@ -363,8 +498,8 @@ def ustm(
             break
 
     return (
-        list(np.astype(t, float)),
-        list(np.astype(primal_var_averaged, float)),
+        list(t.astype(float)),
+        list(primal_var_averaged.astype(float)),
         (dgap_log, cons_log, time_log)
         + ((flows_dist_log,) if flows_dist_log else ()),
         optimal,

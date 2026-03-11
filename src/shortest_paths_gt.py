@@ -6,7 +6,6 @@ import numba
 import numpy as np
 from graph_tool.topology import shortest_distance
 from numba.core import types
-import torch
 
 from src.commons import Correspondences
 
@@ -120,6 +119,7 @@ def get_graph_props(graph: gt.Graph, use_torch: bool = False) -> tuple:
     rho = graph.ep.rho.a
     caps = graph.ep.capacities.a
     if use_torch:
+        import torch
         fft = torch.from_numpy(fft)
         mu = torch.from_numpy(mu)
         rho = torch.from_numpy(rho)
