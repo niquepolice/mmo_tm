@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import graph_tool as gt
-import warnings
 import networkx as nx
 import numpy as np
 import torch
@@ -18,12 +17,6 @@ from src.shortest_paths_gt import (
     flows_on_shortest_gt,
     get_graph_props,
     get_graphtool_graph,
-)
-from src.shortest_paths_gpu import (
-    build_cugraph_state,
-    cugraph_is_available,
-    distance_mat_gpu,
-    flows_on_shortest_gpu,
 )
 
 
@@ -78,16 +71,10 @@ class TrafficModel(Model, ABC):
         nx_graph: nx.DiGraph,
         correspondences: Correspondences,
         use_one_solution_edges: bool = True,
-        shortest_paths_backend: str = "cpu",
-        shortest_paths_tie_break_eps: float = 0.0,
     ):
         self.nx_graph = nx_graph
         self.graph = get_graphtool_graph(nx_graph)
         self.correspondences = correspondences
-        self.shortest_paths_backend = shortest_paths_backend.lower()
-        self.shortest_paths_tie_break_eps = shortest_paths_tie_break_eps
-        self.cugraph_state = None
-        self.edge_order = np.arange(self.graph.num_edges(), dtype=np.float64)
 
         fft, mu, rho, caps = get_graph_props(self.graph)
 
@@ -101,20 +88,6 @@ class TrafficModel(Model, ABC):
             row_proj = A.T @ np.linalg.pinv(A @ A.T) @ A
             row_proj = np.diag(row_proj) / np.linalg.norm(row_proj, axis=0)
             self.one_solution_edges = row_proj > (1 - 1e-6)
-        if self.shortest_paths_backend == "cugraph":
-            if cugraph_is_available():
-                try:
-                    self.cugraph_state = build_cugraph_state(self.graph)
-                except Exception as exc:
-                    warnings.warn(
-                        f"cuGraph backend initialization failed ({exc}), falling back to CPU shortest paths"
-                    )
-                    self.shortest_paths_backend = "cpu"
-            else:
-                warnings.warn("cuGraph backend requested but unavailable, falling back to CPU shortest paths")
-                self.shortest_paths_backend = "cpu"
-        elif self.shortest_paths_backend != "cpu":
-            raise ValueError("shortest_paths_backend must be one of: 'cpu', 'cugraph'")
         
     def flows_on_shortest(
         self, times: np.ndarray, return_distance_mat: bool = False
@@ -122,20 +95,10 @@ class TrafficModel(Model, ABC):
         """Get edge flows distribution for given edge costs, if all agents use the shortest paths
         May also return distance matrix if the flag is set
         """
-        times_np = np.asarray(times, dtype=np.float64)
-        if self.shortest_paths_tie_break_eps > 0:
-            times_np = times_np + self.shortest_paths_tie_break_eps * self.edge_order
-        if self.shortest_paths_backend == "cugraph":
-            return flows_on_shortest_gpu(
-                self.cugraph_state,
-                self.correspondences,
-                times_np,
-                return_distance_mat,
-            )
         return flows_on_shortest_gt(
             self.graph,
             self.correspondences,
-            maybe_create_and_get_times_ep(self.graph, times_np),
+            maybe_create_and_get_times_ep(self.graph, np.asarray(times, dtype=np.float64)),
             return_distance_mat,
         )
 
@@ -176,15 +139,8 @@ class BeckmannModel(TrafficModel):
         correspondences: Correspondences,
         mu=None,
         use_torch: bool = False,
-        shortest_paths_backend: str = "cpu",
-        shortest_paths_tie_break_eps: float = 0.0,
     ):
-        super().__init__(
-            nx_graph,
-            correspondences,
-            shortest_paths_backend=shortest_paths_backend,
-            shortest_paths_tie_break_eps=shortest_paths_tie_break_eps,
-        )
+        super().__init__(nx_graph, correspondences)
         self.graph_props = get_graph_props(self.graph, use_torch=use_torch)  # for some reason, this call is slow, so cache results
         self.original_mu = np.copy(self.graph_props[1])
         self.use_torch = use_torch
@@ -354,15 +310,8 @@ class TelecomModel(TrafficModel):
         nx_graph: nx.DiGraph,
         correspondences: Correspondences,
         mu=None,
-        shortest_paths_backend: str = "cpu",
-        shortest_paths_tie_break_eps: float = 0.0,
     ):
-        super().__init__(
-            nx_graph,
-            correspondences,
-            shortest_paths_backend=shortest_paths_backend,
-            shortest_paths_tie_break_eps=shortest_paths_tie_break_eps,
-        )
+        super().__init__(nx_graph, correspondences)
         self.graph_props = get_graph_props(self.graph)  # for some reason, this call is slow, so cache results
         self.original_mu = np.full_like(self.graph_props[1], -0.5)
         self.sqrt_fft = np.sqrt(self.graph_props[0])
@@ -507,21 +456,11 @@ class TwostageModel(Model):
             self.traffic_model.correspondences.sources,
             self.traffic_model.correspondences.targets,
         )
-        times_np = np.asarray(times, dtype=np.float64)
-        if self.traffic_model.shortest_paths_tie_break_eps > 0:
-            times_np = times_np + self.traffic_model.shortest_paths_tie_break_eps * self.traffic_model.edge_order
-        if self.traffic_model.shortest_paths_backend == "cugraph":
-            return distance_mat_gpu(
-                self.traffic_model.cugraph_state,
-                sources,
-                targets,
-                times_np,
-            )
         return distance_mat_gt(
             self.traffic_model.graph,
             sources,
             targets,
-            maybe_create_and_get_times_ep(self.traffic_model.graph, times_np),
+            maybe_create_and_get_times_ep(self.traffic_model.graph, np.asarray(times, dtype=np.float64)),
         )
 
     def primal(self, flows: np.ndarray, traffic_mat: np.ndarray) -> float:
