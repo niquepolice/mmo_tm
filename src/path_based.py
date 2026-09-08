@@ -28,7 +28,13 @@ def extract_path_from_pred_path(
         v = v_pred
     return path
 
-def shift_flows(model, flows, flow_shift, path_from, path_to):
+def shift_flows(
+    model: BeckmannModel,
+    flows: np.ndarray,
+    flow_shift: float,
+    path_from: list,
+    path_to: list
+):
     if len(path_from)>0:
         for i in path_from:
             flows[i] -= flow_shift
@@ -40,7 +46,11 @@ def shift_flows(model, flows, flow_shift, path_from, path_to):
     times = model.tau(flows)
     return flows, times
 
-def update_travel_time_for_path_set(times, paths, basic_path):
+def update_travel_time_for_path_set(
+    times: np.ndarray,
+    paths: list,
+    basic_path: list
+):
     '''
     update travel time for a set of paths
     output: list of travel time for each path, and the basic path id (if has)
@@ -68,7 +78,13 @@ def update_travel_time_for_path_set(times, paths, basic_path):
         
     return used_path_cost, basic_path_id, basic_path_cost
 
-def get_sum_of_gradient(model: BeckmannModel, flows, p1, p0, n_edges):
+def get_sum_of_gradient(
+    model: BeckmannModel,
+    flows: np.ndarray,
+    p1: list,
+    p0: list,
+    n_edges: int
+):
     '''
     get the sum of derivatives of links.
     '''
@@ -86,7 +102,12 @@ def get_sum_of_gradient(model: BeckmannModel, flows, p1, p0, n_edges):
 
     return dev_sum
 
-def get_limits(basic_path, non_basic_path, flows, caps):
+def get_limits(
+    basic_path: list,
+    non_basic_path: list,
+    flows: np.ndarray,
+    caps: np.ndarray
+):
     link_basic = set(basic_path)
     link_nonbasic = set(non_basic_path)
     link_contributed = list(link_basic.difference(link_nonbasic))
@@ -96,7 +117,17 @@ def get_limits(basic_path, non_basic_path, flows, caps):
     else:
         return max(np.min(caps[link_contributed] - flows[link_contributed]) - 1e-8, 0)
 
-def pb_gradproj_ta(beckmann_model, iters: int, zero_flow_eps: float = 1e-7, log_period=500, log_max_diff = False, check_criterion=-1, solution_flows: Optional[np.ndarray] = None, use_capacity=False, time_limit = 1_000_000):
+def pb_gradproj_ta(
+    beckmann_model: BeckmannModel,
+    iters: int,
+    zero_flow_eps: float = 1e-7,
+    log_period: int=500,
+    log_max_diff: bool = False,
+    check_criterion: int = -1,
+    solution_flows: Optional[np.ndarray] = None,
+    use_capacity: bool = False,
+    time_limit: int = 1_000_000
+):
     A = nx.incidence_matrix(beckmann_model.nx_graph, oriented=True).todense()
     
     corrs = beckmann_model.correspondences
