@@ -21,7 +21,6 @@ def extract_path_from_pred_path(
     path = []
     flow = 0
     v = target
-    # print(source, target, "!!!!!!")
     while v != source:
         v_pred = pred_map_arr[v]
         # print(v_pred, v)
@@ -124,73 +123,53 @@ def pb_gradproj_ta(beckmann_model, iters: int, zero_flow_eps: float = 1e-7, log_
 
     start = time.time()
 
-    print(sources, targets)
+    for si in range(sources.size):
+        s = sources[si]               
+        _, pred_map = shortest_distance(beckmann_model.graph, source=s, target=targets,\
+                                weights=maybe_create_and_get_times_ep(beckmann_model.graph, times), pred_map=True)
+        for ti in range(targets.size):
+            t = targets[ti]
 
-    pbar = tqdm(range(iters))
+            # print(np.linalg.norm(flows))
+            path = extract_path_from_pred_path(s, t, np.array(pred_map.a), edge_to_ind)
+            pqs[si][ti].append(path)
+            list_flows[si][ti].append(traffic_mat[si][ti])
+            flows, times = shift_flows(beckmann_model, flows, traffic_mat[si][ti], [], path)
+
+    pbar = tqdm(range(1, iters))
     for i in pbar:
-        # print(i, pqs)
-        # print(np.min(flows), np.min(times), np.max(flows), np.max(times))
-        # print(f"ASDS {i}")
-        if i == 0:
-            for si in range(sources.size):
-                s = sources[si]                # print(s, np.array(pred_map.a))
-                _, pred_map = shortest_distance(beckmann_model.graph, source=s, target=targets,\
-                                        weights=maybe_create_and_get_times_ep(beckmann_model.graph, times), pred_map=True)
-                for ti in range(targets.size):
-                    t = targets[ti]
+        for si in range(sources.size):
+            s = sources[si]
+            _, pred_map = shortest_distance(beckmann_model.graph, source=s, target=targets,\
+                                    weights=maybe_create_and_get_times_ep(beckmann_model.graph, times), pred_map=True)
+            for ti in range(targets.size):
+                t = targets[ti]
 
-                    # print(np.linalg.norm(flows))
-                    path = extract_path_from_pred_path(s, t, np.array(pred_map.a), edge_to_ind)
-                    pqs[si][ti].append(path)
-                    list_flows[si][ti].append(traffic_mat[si][ti])
-                    flows, times = shift_flows(beckmann_model, flows, traffic_mat[si][ti], [], path)
-        else:
-            for si in range(sources.size):
-                s = sources[si]
-                # print(dist_map, pred_map.a)
-                _, pred_map = shortest_distance(beckmann_model.graph, source=s, target=targets,\
-                                        weights=maybe_create_and_get_times_ep(beckmann_model.graph, times), pred_map=True)
-                for ti in range(targets.size):
-                    # print(np.linalg.norm(flows))
-                    t = targets[ti]
+                basic_path = extract_path_from_pred_path(s, t, np.array(pred_map.a), edge_to_ind)
+                used_path_cost, basic_path_id, basic_path_cost = update_travel_time_for_path_set(times, pqs[si][ti], basic_path)
+                basic_path_flow = 0 if basic_path_id is None else list_flows[si][ti][basic_path_id]
+                    
+                for j in range(len(pqs[si][ti])):
+                    if j != basic_path_id:
+                        non_basic_path = pqs[si][ti][j]
+                        non_basic_path_cost = used_path_cost[j]
+                        path_cost_diff = max(non_basic_path_cost - basic_path_cost, 0) # non-negative
+                        dev_sum = get_sum_of_gradient(beckmann_model, flows, basic_path, non_basic_path, A.shape[1])
+                        flow_to_shift = min(list_flows[si][ti][j],path_cost_diff/dev_sum)
+                        if use_capacity:
+                            flow_to_shift = min(flow_to_shift, get_limits(basic_path, non_basic_path, flows, caps))
+                        list_flows[si][ti][j] -= flow_to_shift
+                        basic_path_flow += flow_to_shift
 
-                    basic_path = extract_path_from_pred_path(s, t, np.array(pred_map.a), edge_to_ind)
-                    used_path_cost, basic_path_id, basic_path_cost = update_travel_time_for_path_set(times, pqs[si][ti], basic_path)
-                    if basic_path_id is None: # it's a new path:
-                        basic_path_flow = 0
-                    else:
-                        basic_path_flow = list_flows[si][ti][basic_path_id]
+                        flows, times = shift_flows(beckmann_model, flows, flow_to_shift, non_basic_path, basic_path)
                         
-                    for j in range(len(pqs[si][ti])):
-                        if j != basic_path_id:
-                            # print(pqs[si][ti][j])
-                            non_basic_path = pqs[si][ti][j]
-                            non_basic_path_cost = used_path_cost[j]
-                            # get the shift flow
-                            # print(basic_path_costs)
-                            path_cost_diff = max(non_basic_path_cost - basic_path_cost, 0) # non-negative
-                            # print("ASDDD")
-                            assert path_cost_diff >= 0, f"path_cost_diff, {path_cost_diff}, {basic_path_id is None}, {ti}"
-                            # then get dev_sum
-                            dev_sum = get_sum_of_gradient(beckmann_model, flows, basic_path, non_basic_path, A.shape[1])
-                            flow_to_shift = min(list_flows[si][ti][j],path_cost_diff/dev_sum)
-                            if use_capacity:
-                                flow_to_shift = min(flow_to_shift, get_limits(basic_path, non_basic_path, flows, caps))
-                            assert flow_to_shift >= 0, f"flow_to_shift, {flow_to_shift}"
-                            assert list_flows[si][ti][j] >= 0, f"list flows before, {list_flows[si][ti][j]}"
-                            list_flows[si][ti][j] -= flow_to_shift
-                            basic_path_flow += flow_to_shift
-                            assert list_flows[si][ti][j] >= 0, f"list flows before, {list_flows[si][ti][j]}"
-
-                            flows, times = shift_flows(beckmann_model, flows, flow_to_shift, non_basic_path, basic_path)
-                            
-                    if basic_path_id is None: # it's a new path:
-                        list_flows[si][ti].append(basic_path_flow)
-                        pqs[si][ti].append(basic_path)
-                    else:
-                        list_flows[si][ti][basic_path_id] = basic_path_flow
-                
-                beckmann_model.graph.ep.times.a = times
+                if basic_path_id is None: # it's a new path:
+                    list_flows[si][ti].append(basic_path_flow)
+                    pqs[si][ti].append(basic_path)
+                else:
+                    list_flows[si][ti][basic_path_id] = basic_path_flow
+            
+            beckmann_model.graph.ep.times.a = times
 
         for s in range(sources.size):
             for t in range(targets.size):
@@ -210,11 +189,5 @@ def pb_gradproj_ta(beckmann_model, iters: int, zero_flow_eps: float = 1e-7, log_
             primal_val = float(beckmann_model.primal(flows))
             if primal_val < check_criterion:
                 break
-            
-        if i % 20 == 0:
-            if time.time() - start > time_limit:
-                break
-            
-        # print(pqs)
 
     return (flows, log_period) + ((opt_time, primal_log, start) + ((flows_dist_log,) if flows_dist_log else ()) if log_period > 0 else ())
